@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helpers
+    function isAuthenticated() { return request.auth != null; }
+    function nonEmptyString(v, max) { return v is string && v.size() > 0 && v.size() <= max; }
+
+    // USERS: one doc per username
+    // { username, uid, createdAt, isOnline, lastSeen }
+    match /users/{username} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated()
+                    && nonEmptyString(username, 50)
+                    && request.resource.data.username == username
+                    && request.resource.data.uid == request.auth.uid;
+
+      allow update: if isAuthenticated()
+                    && resource.data.uid == request.auth.uid;
+
+      allow delete: if isAuthenticated()
+                    && resource.data.uid == request.auth.uid;
+    }
+
+    // PUBLIC CHATS
+    // { id, uid, username, message, timestamp, editedAt? }
+    match /publicChats/{messageId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated()
+                    && nonEmptyString(request.resource.data.message, 1000)
+                    && nonEmptyString(request.resource.data.username, 50)
+                    && request.resource.data.uid == request.auth.uid;
+
+      allow update: if isAuthenticated()
+                    && resource.data.uid == request.auth.uid;
+      allow delete: if isAuthenticated()
+                    && resource.data.uid == request.auth.uid;
+    }
+
+    // ROOM MESSAGES
+    // { id, roomId, uid, username, message, timestamp, editedAt? }
+    match /roomMessages/{messageId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated()
+                    && nonEmptyString(request.resource.data.roomId, 200)
+                    && nonEmptyString(request.resource.data.username, 50)
+                    && nonEmptyString(request.resource.data.message, 1000)
+                    && request.resource.data.uid == request.auth.uid;
+
+      allow update: if isAuthenticated()
+                    && resource.data.uid == request.auth.uid;
+      allow delete: if isAuthenticated()
+                    && resource.data.uid == request.auth.uid;
+    }
+
+    // ROOM USERS (membership mapping)
+    // { roomId, uid, username, joinedAt }
+    match /roomUsers/{roomUserId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && nonEmptyString(request.resource.data.roomId, 200)
+                    && nonEmptyString(request.resource.data.username, 50)
+                    && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAuthenticated()
+                            && resource.data.uid == request.auth.uid;
+    }
+
+    // ROOMS
+    // { id, name, createdBy, createdByUid, createdAt, members[] }
+    match /rooms/{roomId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && nonEmptyString(request.resource.data.name, 100)
+                    && nonEmptyString(request.resource.data.createdBy, 50)
+                    && request.resource.data.createdByUid == request.auth.uid;
+      allow update, delete: if isAuthenticated()
+                            && resource.data.createdByUid == request.auth.uid;
+    }
+
+    // Deny everything else
+    match /{document=**} { allow read, write: if false; }
+  }
+}
