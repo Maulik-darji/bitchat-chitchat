@@ -107,10 +107,29 @@ class FirebaseService {
    */
   async checkUsernameAvailability(username) {
     try {
+      // Ensure we have an authenticated user
+      const current = auth.currentUser;
+      if (!current) {
+        console.log('No authenticated user, attempting to initialize Firebase');
+        await this.initialize();
+      }
+      
       const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, username));
       return !userDoc.exists();
     } catch (error) {
       console.error('Error checking username availability:', error);
+      // If there's a permission error, try to re-authenticate and check again
+      if (error.code === 'permission-denied' || error.message.includes('permissions')) {
+        try {
+          console.log('Permission denied, attempting to re-authenticate');
+          await signInAnonymously(auth);
+          const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, username));
+          return !userDoc.exists();
+        } catch (reauthError) {
+          console.error('Re-authentication failed:', reauthError);
+          return false;
+        }
+      }
       return false;
     }
   }
@@ -630,16 +649,21 @@ class FirebaseService {
          }
        }
        
-       // Try to delete the Firebase Authentication user
+              // First, clean up Firestore data while we still have authentication
+       try {
+         await this.cleanupUserData(currentUser.uid);
+         console.log('Firestore data cleaned up successfully');
+       } catch (cleanupError) {
+         console.log('Firestore cleanup failed:', cleanupError);
+       }
+       
+       // Then try to delete the Firebase Authentication user
        try {
          await currentUser.delete();
          console.log('User account deleted successfully');
        } catch (deleteError) {
-         console.log('Could not delete auth user (token may be expired), proceeding with manual cleanup');
-         
-                   // If deletion fails due to token expiration, do manual cleanup
-          await this.cleanupUserData(currentUser.uid);
-        }
+         console.log('Could not delete auth user (token may be expired), but Firestore data was cleaned up');
+       }
        
        this.isInitialized = false;
        onlineUsers.clear();
@@ -765,6 +789,73 @@ class FirebaseService {
       
     } catch (error) {
       console.error(`Error in manual cleanup for UID ${uid}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Force delete a username from the database (for manual cleanup)
+   */
+  async forceDeleteUsername(username) {
+    try {
+      console.log(`Force deleting username: ${username}`);
+      
+      // Ensure we have an authenticated user
+      const current = auth.currentUser;
+      if (!current) {
+        await this.initialize();
+      }
+      
+      const batch = writeBatch(db);
+      let deletedCount = 0;
+      
+      // Delete user document
+      const userRef = doc(db, COLLECTIONS.USERS, username);
+      batch.delete(userRef);
+      deletedCount++;
+      
+      // Delete public messages by username
+      const publicChatsSnapshot = await getDocs(
+        query(collection(db, COLLECTIONS.PUBLIC_CHATS), where('username', '==', username))
+      );
+      publicChatsSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+        deletedCount++;
+      });
+      
+      // Delete room messages by username
+      const roomMessagesSnapshot = await getDocs(
+        query(collection(db, COLLECTIONS.ROOM_MESSAGES), where('username', '==', username))
+      );
+      roomMessagesSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+        deletedCount++;
+      });
+      
+      // Delete room users by username
+      const roomUsersSnapshot = await getDocs(
+        query(collection(db, COLLECTIONS.ROOM_USERS), where('username', '==', username))
+      );
+      roomUsersSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+        deletedCount++;
+      });
+      
+      // Delete rooms created by username
+      const roomsSnapshot = await getDocs(
+        query(collection(db, COLLECTIONS.ROOMS), where('createdBy', '==', username))
+      );
+      roomsSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+        deletedCount++;
+      });
+      
+      await batch.commit();
+      console.log(`Force delete completed. Deleted ${deletedCount} documents for username: ${username}`);
+      return { success: true, deletedCount };
+      
+    } catch (error) {
+      console.error(`Error in force delete for username ${username}:`, error);
       throw error;
     }
   }
