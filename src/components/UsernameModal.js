@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import firebaseService from '../lib/firebase';
 
 const UsernameModal = ({ onUsernameSet }) => {
@@ -6,6 +6,14 @@ const UsernameModal = ({ onUsernameSet }) => {
   const [isChecking, setIsChecking] = useState(false);
   const [error, setError] = useState('');
   const [suggestions, setSuggestions] = useState([]);
+  const isSubmittingRef = useRef(false);
+
+  // Cleanup effect
+  useEffect(() => {
+    return () => {
+      isSubmittingRef.current = false;
+    };
+  }, []);
 
   const generateSuggestions = (baseUsername) => {
     const suggestions = [];
@@ -22,44 +30,64 @@ const UsernameModal = ({ onUsernameSet }) => {
       return;
     }
 
+    // Prevent double submission using ref
+    if (isSubmittingRef.current || isChecking) {
+      console.log('Preventing double submission');
+      return;
+    }
+
+    isSubmittingRef.current = true;
     setIsChecking(true);
     setError('');
 
     try {
-      const isAvailable = await firebaseService.checkUsernameAvailability(username.trim());
-      
-      if (isAvailable) {
-        await firebaseService.createUser(username.trim());
-        onUsernameSet(username.trim());
-      } else {
+      console.log('Creating user:', username.trim());
+      // Try to create the user directly - this will fail if username already exists
+      await firebaseService.createUser(username.trim());
+      console.log('User created successfully, calling onUsernameSet');
+      onUsernameSet(username.trim());
+    } catch (err) {
+      console.error('Error in handleSubmit:', err);
+      if (err.message === 'Username already exists') {
         setError('Username is already taken');
         setSuggestions(generateSuggestions(username.trim()));
+      } else {
+        setError('Error creating username. Please try again.');
       }
-    } catch (err) {
-      setError('Error checking username availability');
     } finally {
       setIsChecking(false);
+      isSubmittingRef.current = false;
     }
   };
 
   const handleSuggestionClick = async (suggestedUsername) => {
+    // Prevent double submission using ref
+    if (isSubmittingRef.current || isChecking) {
+      console.log('Preventing double submission in suggestion click');
+      return;
+    }
+
+    isSubmittingRef.current = true;
     setUsername(suggestedUsername);
     setIsChecking(true);
     setError('');
 
     try {
-      const isAvailable = await firebaseService.checkUsernameAvailability(suggestedUsername);
-      
-      if (isAvailable) {
-        await firebaseService.createUser(suggestedUsername);
-        onUsernameSet(suggestedUsername);
-      } else {
-        setError('This suggestion is also taken, try another one');
-      }
+      console.log('Creating user from suggestion:', suggestedUsername);
+      // Try to create the user directly - this will fail if username already exists
+      await firebaseService.createUser(suggestedUsername);
+      console.log('User created successfully from suggestion, calling onUsernameSet');
+      onUsernameSet(suggestedUsername);
     } catch (err) {
-      setError('Error creating username');
+      console.error('Error in handleSuggestionClick:', err);
+      if (err.message === 'Username already exists') {
+        setError('This suggestion is also taken, try another one');
+      } else {
+        setError('Error creating username. Please try again.');
+      }
     } finally {
       setIsChecking(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -95,7 +123,7 @@ const UsernameModal = ({ onUsernameSet }) => {
 
           {suggestions.length > 0 && (
             <div className="space-y-2">
-              <p className="text-sm text-gray-300">Try these suggestions:</p>
+              <p className="text-sm text-gray-300">Try:</p>
               <div className="flex flex-wrap gap-2">
                 {suggestions.map((suggestion, index) => (
                   <button

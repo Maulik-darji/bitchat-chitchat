@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import firebaseService from '../lib/firebase';
 
-const PublicChat = ({ username }) => {
+const PublicChat = ({ username, sidebarWidth = 256 }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [editingMessage, setEditingMessage] = useState(null);
@@ -11,6 +11,8 @@ const PublicChat = ({ username }) => {
   const [spamError, setSpamError] = useState('');
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef(null);
+  
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -273,34 +275,17 @@ const PublicChat = ({ username }) => {
       </div>
 
       {/* Twitter-style Message Input - Fixed position */}
-      <div className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0 fixed bottom-0 left-0 right-0 lg:left-64 xl:right-80 z-10">
-        {/* Spam Status Display */}
+      <div 
+        className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0 fixed bottom-0 left-0 right-0 z-10"
+        style={{ 
+          left: window.innerWidth >= 1024 ? `${sidebarWidth}px` : '0px',
+          right: window.innerWidth >= 1280 ? '320px' : '0px'
+        }}
+      >
+        {/* Spam Error Display - Only show when there's an actual error */}
         {spamError && (
           <div className="px-4 py-2 bg-red-900/30 border border-red-700/50 mb-4">
             <p className="text-red-300 text-sm">{spamError}</p>
-          </div>
-        )}
-
-        {spamStatus.remainingMessages !== 5 && (
-          <div className="px-4 py-2 bg-yellow-900/30 border border-yellow-700/50 mb-4">
-            <div className="flex items-center justify-between">
-              <span className="text-yellow-300 text-sm">
-                Rapid messages: {spamStatus.remainingMessages} remaining
-              </span>
-              {spamStatus.cooldown > 0 && (
-                <span className="text-yellow-400 text-sm">
-                  Cooldown: {spamStatus.cooldown}s
-                </span>
-              )}
-            </div>
-            {spamStatus.remainingMessages < 5 && (
-              <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
-                <div
-                  className="bg-yellow-500 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${(spamStatus.remainingMessages / 5) * 100}%` }}
-                ></div>
-              </div>
-            )}
           </div>
         )}
 

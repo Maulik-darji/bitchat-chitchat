@@ -52,7 +52,8 @@ service cloud.firestore {
       allow update: if isAuthenticated()
                     && resource.data.uid == request.auth.uid;
       allow delete: if isAuthenticated()
-                    && resource.data.uid == request.auth.uid;
+                    && (resource.data.uid == request.auth.uid || 
+                        isRoomCreator(resource.data.roomId, request.auth.uid));
     }
 
     // ROOM USERS (membership mapping)
@@ -64,7 +65,8 @@ service cloud.firestore {
                     && nonEmptyString(request.resource.data.username, 50)
                     && request.resource.data.uid == request.auth.uid;
       allow update, delete: if isAuthenticated()
-                            && resource.data.uid == request.auth.uid;
+                            && (resource.data.uid == request.auth.uid ||
+                                isRoomCreator(resource.data.roomId, request.auth.uid));
     }
 
     // ROOMS
@@ -75,8 +77,54 @@ service cloud.firestore {
                     && nonEmptyString(request.resource.data.name, 100)
                     && nonEmptyString(request.resource.data.createdBy, 50)
                     && request.resource.data.createdByUid == request.auth.uid;
-      allow update, delete: if isAuthenticated()
-                            && resource.data.createdByUid == request.auth.uid;
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated()
+                    && resource.data.createdByUid == request.auth.uid;
+    }
+
+    // INVITES
+    // { id, fromUsername, toUsername, fromUid, status, createdAt, respondedAt? }
+    match /invites/{inviteId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && nonEmptyString(request.resource.data.fromUsername, 50)
+                    && nonEmptyString(request.resource.data.toUsername, 50)
+                    && request.resource.data.fromUid == request.auth.uid;
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated()
+                    && (resource.data.fromUid == request.auth.uid ||
+                        isRoomCreator(resource.data.roomId, request.auth.uid));
+    }
+
+    // PRIVATE CHATS
+    // { id, participants[], createdAt, lastMessageAt }
+    match /privateChats/{chatId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated()
+                    && resource.data.participants.hasAny([request.auth.uid]);
+    }
+
+    // PRIVATE MESSAGES
+    // { id, chatId, uid, username, message, timestamp, editedAt? }
+    match /privateMessages/{messageId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && nonEmptyString(request.resource.data.chatId, 200)
+                    && nonEmptyString(request.resource.data.username, 50)
+                    && nonEmptyString(request.resource.data.message, 1000)
+                    && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated()
+                    && resource.data.uid == request.auth.uid;
+      allow delete: if isAuthenticated()
+                    && resource.data.uid == request.auth.uid;
+    }
+
+    // Helper function to check if user is room creator
+    function isRoomCreator(roomId, uid) {
+      let room = get(/databases/$(database)/documents/rooms/$(roomId));
+      return room != null && room.data.createdByUid == uid;
     }
 
     // Deny everything else

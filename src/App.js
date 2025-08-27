@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import UsernameModal from './components/UsernameModal';
 import Sidebar from './components/Sidebar';
@@ -7,14 +7,22 @@ import StatsSidebar from './components/StatsSidebar';
 import JoinRoom from './components/JoinRoom';
 import CreateRoom from './components/CreateRoom';
 import PrivateRoom from './components/PrivateRoom';
+import PrivateChat from './components/PrivateChat';
 import firebaseService from './lib/firebase';
 
 function App() {
   const [username, setUsername] = useState(null);
   const [currentView, setCurrentView] = useState('home');
   const [currentRoom, setCurrentRoom] = useState(null);
+  const [currentPrivateChat, setCurrentPrivateChat] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem('sidebarWidth');
+    return saved ? parseInt(saved) : 256;
+  }); // Default 256px (w-64)
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeRef = useRef(null);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -41,13 +49,76 @@ function App() {
 
   const handleUsernameSet = async (newUsername) => {
     try {
-      await firebaseService.createUser(newUsername);
+      // The user has already been created in the UsernameModal
+      // Just set the username in the app state
+      console.log('Setting username in app state:', newUsername);
       setUsername(newUsername);
       sessionStorage.setItem('username', newUsername);
     } catch (error) {
+      console.error('Error setting username in app state:', error);
       throw error;
     }
   };
+
+  // Debug function - can be called from browser console
+  const debugUsernameIssue = async (testUsername) => {
+    console.log('=== DEBUGGING USERNAME ISSUE ===');
+    console.log('Test username:', testUsername);
+    
+    try {
+      // List current users
+      console.log('0. Current users in database:');
+      await firebaseService.listAllUsers();
+      
+      // Clear all caches
+      console.log('1. Clearing caches...');
+      await firebaseService.clearCache();
+      await firebaseService.clearIndexedDBCache();
+      
+      // Wait a moment
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Force check username
+      console.log('2. Force checking username...');
+      const isAvailable = await firebaseService.forceCheckUsername(testUsername);
+      console.log('Username available:', isAvailable);
+      
+      // Try to create user
+      console.log('3. Attempting to create user...');
+      await firebaseService.createUser(testUsername);
+      console.log('✅ User created successfully!');
+      
+      // Clean up - delete the test user
+      console.log('4. Cleaning up test user...');
+      await firebaseService.forceDeleteUsername(testUsername);
+      console.log('✅ Test user deleted successfully!');
+      
+    } catch (error) {
+      console.error('❌ Debug failed:', error);
+    }
+  };
+
+  // Function to clear a specific username that might be causing issues
+  const clearUsername = async (usernameToClear) => {
+    console.log(`=== CLEARING USERNAME: ${usernameToClear} ===`);
+    try {
+      await firebaseService.forceDeleteUsername(usernameToClear);
+      console.log(`✅ Username "${usernameToClear}" cleared successfully!`);
+    } catch (error) {
+      console.error(`❌ Failed to clear username "${usernameToClear}":`, error);
+    }
+  };
+
+  // Make debug functions available globally
+  useEffect(() => {
+    window.debugUsernameIssue = debugUsernameIssue;
+    window.clearUsername = clearUsername;
+    window.listAllUsers = () => firebaseService.listAllAuthAndFirestoreUsers();
+    console.log('Debug functions available:');
+    console.log('- window.debugUsernameIssue(username)');
+    console.log('- window.clearUsername(username)');
+    console.log('- window.listAllUsers()');
+  }, []);
 
   const handleLogout = async () => {
     if (!username) return;
@@ -105,11 +176,114 @@ function App() {
     sessionStorage.removeItem('username');
     setCurrentView('home');
     setCurrentRoom(null);
+    setCurrentPrivateChat(null);
+  };
+
+  const handleInviteAccepted = async (otherUsername) => {
+    try {
+      // Create chat ID (sorted usernames to ensure consistency)
+      const sortedUsers = [username, otherUsername].sort();
+      const chatId = `${sortedUsers[0]}_${sortedUsers[1]}`;
+      
+      console.log('Handling invite acceptance for:', { username, otherUsername, chatId });
+      
+      // Ensure the private chat exists
+      await firebaseService.createPrivateChat(username, otherUsername);
+      
+      setCurrentPrivateChat({
+        chatId,
+        otherUsername
+      });
+      setCurrentView('private-chat');
+    } catch (error) {
+      console.error('Error handling invite acceptance:', error);
+    }
+  };
+
+  const handleUserRemoved = (removedUsername) => {
+    console.log('User removed from chat:', removedUsername);
+    // Close the private chat and return to home
+    setCurrentPrivateChat(null);
+    setCurrentView('home');
   };
 
   const handleCloseModal = () => {
     setCurrentView('home');
   };
+
+  // Sidebar resize handlers
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    setIsResizing(true);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isResizing) return;
+    
+    // Store the current mouse position in the ref
+    resizeRef.current = e.clientX;
+    
+    // Use requestAnimationFrame for smoother updates
+    requestAnimationFrame(() => {
+      if (resizeRef.current !== null) {
+        const newWidth = resizeRef.current;
+        const minWidth = 200; // Minimum sidebar width
+        const maxWidth = Math.min(500, window.innerWidth * 0.4); // Max 40% of window width
+        
+        if (newWidth >= minWidth && newWidth <= maxWidth) {
+          setSidebarWidth(newWidth);
+        }
+      }
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsResizing(false);
+    resizeRef.current = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  };
+
+  const handleDoubleClick = () => {
+    setSidebarWidth(256); // Reset to default width
+  };
+
+  // Add global mouse event listeners for resizing
+  useEffect(() => {
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isResizing]);
+
+  // Save sidebar width to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('sidebarWidth', sidebarWidth.toString());
+  }, [sidebarWidth]);
+
+  // Handle window resize to adjust sidebar width if needed
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const minWidth = 200;
+      const maxWidth = Math.min(500, window.innerWidth * 0.4); // Max 40% of window width
+      
+      if (sidebarWidth < minWidth) {
+        setSidebarWidth(minWidth);
+      } else if (sidebarWidth > maxWidth) {
+        setSidebarWidth(maxWidth);
+      }
+    };
+
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
+  }, [sidebarWidth]);
 
   if (isInitializing) {
     return (
@@ -123,24 +297,17 @@ function App() {
     return <UsernameModal onUsernameSet={handleUsernameSet} />;
   }
 
-  return (
-    <div className="App h-screen overflow-hidden">
-      {/* Mobile Menu Button */}
-      <div className="lg:hidden fixed top-4 left-4 z-40">
-        <button
-          onClick={() => setCurrentView('mobile-menu')}
-          className="bg-gray-800/80 backdrop-blur-sm p-3 rounded-full text-gray-300 hover:text-white hover:bg-gray-700/80 transition-all duration-200 border border-gray-700/50 shadow-lg"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Main Layout */}
+      return (
+      <div className="App h-screen overflow-hidden">
+        {/* Main Layout */}
       <div className="flex h-full">
         {/* Left Sidebar - Hidden on small screens */}
-        <div className="hidden lg:block w-64 h-screen overflow-hidden">
+        <div 
+          className={`hidden lg:block h-screen overflow-hidden bg-gray-900/95 backdrop-blur-md border-r border-gray-800/50 ${
+            isResizing ? '' : 'transition-all duration-200'
+          }`}
+          style={{ width: `${sidebarWidth}px` }}
+        >
           <Sidebar
             currentView={currentView}
             onViewChange={setCurrentView}
@@ -148,7 +315,44 @@ function App() {
             onLogout={handleLogout}
             isLoggingOut={isLoggingOut}
             onEditUsername={handleEditUsername}
+            onInviteAccepted={handleInviteAccepted}
+            onRoomSelect={(room) => {
+              console.log('Room selected in App.js:', room);
+              setCurrentRoom({ id: room.id, name: room.name });
+              setCurrentView('private-room');
+            }}
+            sidebarWidth={sidebarWidth}
           />
+        </div>
+
+        {/* Resize Handle */}
+        <div 
+          className={`hidden lg:block w-1 cursor-col-resize transition-colors duration-200 group relative ${
+            isResizing 
+              ? 'bg-blue-500/70' 
+              : 'bg-gray-700/50 hover:bg-gray-600/70'
+          }`}
+          onMouseDown={handleMouseDown}
+          onDoubleClick={handleDoubleClick}
+          title="Drag to resize sidebar • Double-click to reset"
+        >
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className={`w-0.5 h-8 transition-colors duration-200 ${
+              isResizing 
+                ? 'bg-blue-400/90' 
+                : 'bg-gray-500/50 group-hover:bg-gray-400/70'
+            }`}></div>
+          </div>
+          {/* Resize indicator */}
+          {isResizing && (
+            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-20">
+              {sidebarWidth}px
+            </div>
+          )}
+          {/* Hover indicator */}
+          <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-800 text-gray-300 text-xs px-2 py-1 rounded whitespace-nowrap z-10">
+            {sidebarWidth}px
+          </div>
         </div>
 
         {/* Center Content Area */}
@@ -158,7 +362,18 @@ function App() {
               {/* Header */}
               <div className="bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4">
                 <div className="flex items-center justify-between">
-                  <h1 className="text-2xl font-bold text-white text-left">Public Chat</h1>
+                  <div className="flex items-center space-x-3">
+                    {/* Hamburger Menu - Mobile Only */}
+                    <button
+                      onClick={() => setCurrentView('mobile-menu')}
+                      className="lg:hidden text-gray-300 hover:text-white transition-colors p-1"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                      </svg>
+                    </button>
+                    <h1 className="text-2xl font-bold text-white text-left">Public Chat</h1>
+                  </div>
                   <button
                     onClick={() => {
                       // Trigger refresh in PublicChat component
@@ -177,7 +392,7 @@ function App() {
               
               {/* Chat Area */}
               <div className="flex-1 overflow-y-auto">
-                <PublicChat username={username} />
+                <PublicChat username={username} sidebarWidth={sidebarWidth} />
               </div>
             </div>
           )}
@@ -187,7 +402,18 @@ function App() {
               {/* Header */}
               <div className="bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4">
                 <div className="flex items-center justify-between">
-                  <h1 className="text-2xl font-bold text-white">Private Room: {currentRoom.name}</h1>
+                  <div className="flex items-center space-x-3">
+                    {/* Hamburger Menu - Mobile Only */}
+                    <button
+                      onClick={() => setCurrentView('mobile-menu')}
+                      className="lg:hidden text-gray-300 hover:text-white transition-colors p-1"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                      </svg>
+                    </button>
+                    <h1 className="text-2xl font-bold text-white">Private Room: {currentRoom.name}</h1>
+                  </div>
                   <button
                     onClick={() => setCurrentView('home')}
                     className="text-gray-400 hover:text-white transition-colors"
@@ -223,10 +449,29 @@ function App() {
             <CreateRoom
               username={username}
               onCreateRoom={(roomId, roomName) => {
-                setCurrentRoom({ id: roomId, name: roomName });
-                setCurrentView('private-room');
+                if (roomId && roomName) {
+                  setCurrentRoom({ id: roomId, name: roomName });
+                  setCurrentView('private-room');
+                } else {
+                  // If roomId is null, switch to join room view
+                  setCurrentView('join-room');
+                }
               }}
               onClose={handleCloseModal}
+            />
+          )}
+
+          {/* Private Chat */}
+          {currentView === 'private-chat' && currentPrivateChat && (
+            <PrivateChat
+              chatId={currentPrivateChat.chatId}
+              otherUsername={currentPrivateChat.otherUsername}
+              username={username}
+              onClose={() => {
+                setCurrentView('home');
+                setCurrentPrivateChat(null);
+              }}
+              onUserRemoved={handleUserRemoved}
             />
           )}
         </div>
@@ -250,20 +495,16 @@ function App() {
                 onLogout={handleLogout}
                 isLoggingOut={isLoggingOut}
                 onEditUsername={handleEditUsername}
+                onInviteAccepted={handleInviteAccepted}
+                onRoomSelect={(room) => {
+                  setCurrentRoom({ id: room.id, name: room.name });
+                  setCurrentView('private-room');
+                }}
               />
             </div>
 
-            {/* Close Button Area */}
-            <div className="flex-1 flex items-center justify-center">
-              <button
-                onClick={() => setCurrentView('home')}
-                className="bg-gray-800/80 backdrop-blur-sm p-3 rounded-full text-gray-300 hover:text-white hover:bg-gray-700/80 transition-all duration-200 border border-gray-700/50 shadow-lg"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18L6 6l12 12" />
-                </svg>
-              </button>
-            </div>
+            {/* Tap to close area */}
+            <div className="flex-1" onClick={() => setCurrentView('home')}></div>
           </div>
         </div>
       )}

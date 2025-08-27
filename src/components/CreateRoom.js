@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import firebaseService from '../lib/firebase';
 
-const CreateRoom = ({ username, onRoomCreated, onClose }) => {
+const CreateRoom = ({ username, onCreateRoom, onClose }) => {
   const [roomName, setRoomName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
@@ -16,7 +16,7 @@ const CreateRoom = ({ username, onRoomCreated, onClose }) => {
     try {
       const roomId = await firebaseService.createRoom(roomName.trim(), username);
       const room = await firebaseService.getRoom(roomId);
-      onRoomCreated(roomId, room.name);
+      onCreateRoom(roomId, room.name);
     } catch (error) {
       console.error('Error creating room:', error);
       setError(error.message || 'Failed to create room');
@@ -76,8 +76,8 @@ const CreateRoom = ({ username, onRoomCreated, onClose }) => {
           <p className="text-gray-400 text-sm">
             Already have a room code?{' '}
             <button
-              onClick={() => onRoomCreated(null)} // This will trigger join room view
-              className="text-gray-400 hover:text-gray-300 underline"
+              onClick={() => onCreateRoom(null)} // This will trigger join room view
+              className="text-gray-300 underline"
             >
               Join existing room
             </button>
