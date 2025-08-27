@@ -14,6 +14,8 @@ const PrivateRoom = (props) => {
   const [editText, setEditText] = useState('');
   const [copied, setCopied] = useState(false);
   const messagesEndRef = useRef(null);
+  const messagesUnsubRef = useRef(null);
+  const usersUnsubRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -30,23 +32,72 @@ const PrivateRoom = (props) => {
   };
 
   useEffect(() => {
-    setIsCreator(room?.creator === username);
+    const determineCreator = async () => {
+      try {
+        const currentUid = await firebaseService.ensureUserUid?.();
+        let roomDoc = room;
+        // Fetch fresh room data to get createdBy/createdByUid if missing
+        if (!roomDoc?.createdBy && !roomDoc?.createdByUid && room?.roomId) {
+          try { roomDoc = await firebaseService.getRoom(room.roomId); } catch (_) {}
+        }
+        const norm = (v) => (v ?? '').toString().trim().toLowerCase();
+        const owner = (
+          norm(roomDoc?.createdBy) === norm(username) ||
+          norm(roomDoc?.creator) === norm(username) ||
+          (!!roomDoc?.createdByUid && currentUid && roomDoc.createdByUid === currentUid)
+        );
+        setIsCreator(!!owner);
+      } catch (_) {
+        setIsCreator(false);
+      }
+    };
+    determineCreator();
   }, [room, username]);
 
   useEffect(() => {
     if (!room?.roomId) return;
-    
+    // Immediately clear state to avoid showing previous room's data
+    setMessages([]);
+    setRoomUsers([]);
+
+    // Proactively unsubscribe any previous listeners before attaching new ones
+    if (typeof messagesUnsubRef.current === 'function') {
+      try { messagesUnsubRef.current(); } catch (_) {}
+      messagesUnsubRef.current = null;
+    }
+    if (typeof usersUnsubRef.current === 'function') {
+      try { usersUnsubRef.current(); } catch (_) {}
+      usersUnsubRef.current = null;
+    }
+
     const unsubscribeMessages = firebaseService.onRoomMessagesUpdate(room.roomId, (messageList) => {
       setMessages(messageList);
     });
-
     const unsubscribeUsers = firebaseService.onRoomUsersUpdate(room.roomId, (userList) => {
       setRoomUsers(userList);
+      // If current user is no longer in the room, auto-redirect to home
+      const stillMember = userList.some(u => u.username === username);
+      if (!stillMember) {
+        if (typeof props.onViewChange === 'function') {
+          props.onViewChange('home');
+        }
+        if (typeof onLeaveRoom === 'function') {
+          onLeaveRoom();
+        }
+      }
     });
+    messagesUnsubRef.current = unsubscribeMessages;
+    usersUnsubRef.current = unsubscribeUsers;
 
     return () => {
-      unsubscribeMessages && unsubscribeMessages();
-      unsubscribeUsers && unsubscribeUsers();
+      if (typeof messagesUnsubRef.current === 'function') {
+        try { messagesUnsubRef.current(); } catch (_) {}
+        messagesUnsubRef.current = null;
+      }
+      if (typeof usersUnsubRef.current === 'function') {
+        try { usersUnsubRef.current(); } catch (_) {}
+        usersUnsubRef.current = null;
+      }
     };
   }, [room?.roomId]);
 
@@ -117,17 +168,44 @@ const PrivateRoom = (props) => {
     }
   };
 
-  const handleRemoveUser = async (userId, username) => {
-    if (!window.confirm(`Are you sure you want to remove ${username} from this room?`)) {
+  const handleRemoveUser = async (userId, usernameToRemove) => {
+    if (!window.confirm(`Are you sure you want to remove ${usernameToRemove} from this room?`)) {
       return;
     }
     
     try {
-      await firebaseService.removeUserFromRoom(room.roomId, userId);
+      await firebaseService.removeUserFromRoom(room.roomId, usernameToRemove);
       setShowUserMenu(null);
     } catch (error) {
       console.error('Error removing user:', error);
-      alert(`Failed to remove ${username} from room: ${error.message}`);
+      alert(`Failed to remove ${usernameToRemove} from room: ${error.message}`);
+    }
+  };
+
+  const handleLeaveClick = async () => {
+    // Redirect immediately regardless of Firestore speed
+    if (typeof props.onViewChange === 'function') {
+      props.onViewChange('home');
+    }
+    if (typeof onLeaveRoom === 'function') {
+      onLeaveRoom();
+    }
+    // Stop listeners and clear UI
+    if (typeof messagesUnsubRef.current === 'function') {
+      try { messagesUnsubRef.current(); } catch (_) {}
+      messagesUnsubRef.current = null;
+    }
+    if (typeof usersUnsubRef.current === 'function') {
+      try { usersUnsubRef.current(); } catch (_) {}
+      usersUnsubRef.current = null;
+    }
+    setMessages([]);
+    setRoomUsers([]);
+    // Best-effort Firestore leave
+    try {
+      await firebaseService.leaveRoom(room.roomId, username);
+    } catch (error) {
+      console.error('Error leaving room from PrivateRoom view (ignored after redirect):', error);
     }
   };
 
@@ -149,30 +227,32 @@ const PrivateRoom = (props) => {
             <div className="flex-1 min-w-0">
               <h2 className="text-lg font-bold text-white/90 mb-1 text-left">{room.roomName}</h2>
               <p className="text-gray-400/70 text-sm mb-2 text-left">Private Room</p>
-              <div className="flex items-center space-x-2">
-                <p className="text-gray-400/70 text-xs text-left">Room Code: <span className="text-yellow-400 font-mono">{room.roomId}</span></p>
-                <button
-                  onClick={handleCopyCode}
-                  className="text-gray-400/70 hover:text-yellow-400 transition-colors duration-200 p-1 rounded"
-                  title="Copy room code"
-                >
-                  {copied ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
+              {isCreator && (
+                <div className="flex items-center space-x-2">
+                  <p className="text-gray-400/70 text-xs text-left">Room Code: <span className="text-yellow-400 font-mono">{room.roomId}</span></p>
+                  <button
+                    onClick={handleCopyCode}
+                    className="text-gray-400/70 hover:text-yellow-400 transition-colors duration-200 p-1 rounded"
+                    title="Copy room code"
+                  >
+                    {copied ? (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center justify-between pt-2 border-t border-gray-700/30">
             <span className="text-gray-400/70 text-sm font-medium">{roomUsers.length} members</span>
             <button
-              onClick={onLeaveRoom}
+              onClick={handleLeaveClick}
               className="text-red-400/70 hover:text-red-300 text-sm font-medium transition-all duration-200 px-3 py-1.5 rounded-lg hover:bg-red-900/20"
             >
               Leave Room

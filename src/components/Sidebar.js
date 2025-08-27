@@ -161,6 +161,7 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
         <JoinedRooms
           username={username}
           onRoomSelect={onRoomSelect}
+          onViewChange={onViewChange}
         />
 
         {/* My Private Rooms */}

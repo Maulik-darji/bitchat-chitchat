@@ -427,7 +427,16 @@ function App() {
               
               {/* Chat Area */}
               <div className="flex-1 overflow-y-auto">
-                <PrivateRoom roomId={currentRoom.id} roomName={currentRoom.name} username={username} />
+                <PrivateRoom
+                  roomId={currentRoom.id}
+                  roomName={currentRoom.name}
+                  username={username}
+                  onViewChange={setCurrentView}
+                  onLeaveRoom={() => {
+                    setCurrentView('home');
+                    setCurrentRoom(null);
+                  }}
+                />
               </div>
             </div>
           )}

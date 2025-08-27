@@ -20,7 +20,8 @@ import {
   orderBy, 
   onSnapshot, 
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  arrayRemove
 } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 
@@ -93,6 +94,44 @@ class FirebaseService {
     this.initPromise = null;
     this.unsubscribeFns = new Set();
   }
+
+  /**
+   * Ensure there is a signed-in user and optionally backfill the UID
+   * into the provided username's user document. Returns the UID.
+   */
+  async ensureUserUid(username) {
+    try {
+      // Ensure auth session exists
+      let current = auth.currentUser;
+      if (!current) {
+        await this.initialize();
+        current = auth.currentUser;
+      }
+
+      const uid = current?.uid || null;
+
+      // If a username is provided, make sure the users/<username> doc has the UID
+      if (username && uid) {
+        try {
+          const userRef = doc(db, COLLECTIONS.USERS, username);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            const data = userSnap.data() || {};
+            if (!data.uid) {
+              await updateDoc(userRef, { uid, lastSeen: serverTimestamp() });
+            }
+          }
+        } catch (_) {
+          // Best-effort; ignore failures
+        }
+      }
+
+      return uid;
+    } catch (error) {
+      console.error('ensureUserUid failed:', error);
+      return null;
+    }
+  }
 
   /**
    * Initialize the Firebase service
@@ -813,18 +852,59 @@ class FirebaseService {
       // Remove user from room users
       const roomUserDocId = `${roomId}_${username}`;
       await deleteDoc(doc(db, COLLECTIONS.ROOM_USERS, roomUserDocId));
-      
+
+      // Best-effort: remove from members array (ignore permission issues)
+      try {
+        await updateDoc(doc(db, COLLECTIONS.ROOMS, roomId), { members: arrayRemove(username) });
+      } catch (e) {
+        if (e?.code !== 'permission-denied') {
+          console.warn('Non-fatal leaveRoom members update failed:', e);
+        }
+      }
+
       console.log('User left room successfully');
       return true;
     } catch (error) {
-            console.error('Error leaving room:', error);
+      console.error('Error leaving room:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove a user from a room (owner-only)
+   */
+  async removeUserFromRoom(roomId, usernameToRemove) {
+    try {
+      const current = auth.currentUser;
+      if (!current) throw new Error('No authenticated user');
+
+      // Verify current user is the room creator
+      const roomRef = doc(db, COLLECTIONS.ROOMS, roomId);
+      const roomDoc = await getDoc(roomRef);
+      if (!roomDoc.exists()) throw new Error('Room not found');
+      const roomData = roomDoc.data();
+      if (roomData.createdByUid && roomData.createdByUid !== current.uid) {
+        throw new Error('Only room creator can remove users');
+      }
+
+      // Remove membership doc and array membership
+      try {
+        await deleteDoc(doc(db, COLLECTIONS.ROOM_USERS, `${roomId}_${usernameToRemove}`));
+      } catch (_) {}
+      try {
+        await updateDoc(roomRef, { members: arrayRemove(usernameToRemove) });
+      } catch (_) {}
+
+      return true;
+    } catch (error) {
+      console.error('Error removing user from room:', error);
       throw error;
     }
   }
 
-  /**
-   * Join private room with UID tracking
-   */
+  /**
+   * Join private room with UID tracking
+   */
   async joinRoom(roomCode, username) {
     try {
       const current = auth.currentUser;

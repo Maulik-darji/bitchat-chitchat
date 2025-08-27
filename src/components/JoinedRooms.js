@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import firebaseService from '../lib/firebase';
 
-const JoinedRooms = ({ username, onRoomSelect }) => {
+const JoinedRooms = ({ username, onRoomSelect, onViewChange }) => {
   const [joinedRooms, setJoinedRooms] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -95,12 +95,16 @@ const JoinedRooms = ({ username, onRoomSelect }) => {
                   );
                   
                   if (confirmed) {
+                    // Redirect immediately
+                    if (typeof onViewChange === 'function') {
+                      onViewChange('home');
+                    }
+                    // Best-effort Firestore leave in background
                     try {
                       await firebaseService.leaveRoom(room.id, username);
                       console.log('Left room successfully');
                     } catch (error) {
-                      console.error('Error leaving room:', error);
-                      alert('Failed to leave room. Please try again.');
+                      console.error('Error leaving room (ignored after redirect):', error);
                     }
                   }
                 }}
