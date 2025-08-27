@@ -1709,13 +1709,22 @@ class FirebaseService {
          }
        }
        
-              // First, clean up Firestore data while we still have authentication
-       try {
-         await this.cleanupUserData(currentUser.uid);
-         console.log('Firestore data cleaned up successfully');
-       } catch (cleanupError) {
-         console.log('Firestore cleanup failed:', cleanupError);
-       }
+                    // First, try to clean up using Cloud Function (more reliable)
+      try {
+        const manualCleanup = functions.httpsCallable('manualCleanup');
+        const result = await manualCleanup();
+        console.log('Cloud Function cleanup result:', result.data);
+      } catch (cloudFunctionError) {
+        console.warn('Cloud Function cleanup failed, falling back to local cleanup:', cloudFunctionError);
+        
+        // Fallback to local cleanup
+        try {
+          await this.cleanupUserData(currentUser.uid);
+          console.log('Local Firestore cleanup completed');
+        } catch (localCleanupError) {
+          console.error('Local cleanup also failed:', localCleanupError);
+        }
+      }
        
        // Then try to delete the Firebase Authentication user
        try {
@@ -1795,17 +1804,73 @@ class FirebaseService {
         deletedCount++;
       });
       
-      // Delete rooms created by this user
-      const roomsSnapshot = await getDocs(
-        query(collection(db, 'rooms'), where('createdByUid', '==', uid))
-      );
-      roomsSnapshot.docs.forEach(doc => {
-        batch.delete(doc.ref);
-        deletedCount++;
-      });
-      
-      // Legacy cleanup by username (for old docs without uid)
-      if (username) {
+            // Delete rooms created by this user
+      const roomsSnapshot = await getDocs(
+        query(collection(db, 'rooms'), where('createdByUid', '==', uid))
+      );
+      roomsSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+        deletedCount++;
+      });
+
+      // Delete invites sent by this user
+      try {
+        const invitesSentSnapshot = await getDocs(
+          query(collection(db, 'invites'), where('fromUid', '==', uid))
+        );
+        invitesSentSnapshot.docs.forEach(doc => {
+          batch.delete(doc.ref);
+          deletedCount++;
+        });
+        console.log(`Deleted ${invitesSentSnapshot.docs.length} sent invites`);
+      } catch (error) {
+        console.warn('Could not delete sent invites:', error);
+      }
+
+      // Delete invites received by this user
+      try {
+        const invitesReceivedSnapshot = await getDocs(
+          query(collection(db, 'invites'), where('toUsername', '==', username))
+        );
+        invitesReceivedSnapshot.docs.forEach(doc => {
+          batch.delete(doc.ref);
+          deletedCount++;
+        });
+        console.log(`Deleted ${invitesReceivedSnapshot.docs.length} received invites`);
+      } catch (error) {
+        console.warn('Could not delete received invites:', error);
+      }
+
+      // Delete private messages by UID
+      try {
+        const privateMessagesSnapshot = await getDocs(
+          query(collection(db, 'privateMessages'), where('uid', '==', uid))
+        );
+        privateMessagesSnapshot.docs.forEach(doc => {
+          batch.delete(doc.ref);
+          deletedCount++;
+        });
+        console.log(`Deleted ${privateMessagesSnapshot.docs.length} private messages`);
+      } catch (error) {
+        console.warn('Could not delete private messages:', error);
+      }
+
+      // Delete private chats where this user is a participant
+      try {
+        const privateChatsSnapshot = await getDocs(
+          query(collection(db, 'privateChats'), where('participants', 'array-contains', uid))
+        );
+        privateChatsSnapshot.docs.forEach(doc => {
+          batch.delete(doc.ref);
+          deletedCount++;
+        });
+        console.log(`Deleted ${privateChatsSnapshot.docs.length} private chats`);
+      } catch (error) {
+        console.warn('Could not delete private chats:', error);
+      }
+      
+      // Legacy cleanup by username (for old docs without uid)
+      if (username) {
         // Delete public messages by username
         const publicByUsername = await getDocs(
           query(collection(db, 'publicChats'), where('username', '==', username))
@@ -1833,15 +1898,71 @@ class FirebaseService {
           deletedCount++;
         });
         
-        // Delete rooms created by username
-        const roomsByCreator = await getDocs(
-          query(collection(db, 'rooms'), where('createdBy', '==', username))
-        );
-        roomsByCreator.docs.forEach(doc => {
-          batch.delete(doc.ref);
-          deletedCount++;
-        });
-      }
+                // Delete rooms created by username
+        const roomsByCreator = await getDocs(
+          query(collection(db, 'rooms'), where('createdBy', '==', username))
+        );
+        roomsByCreator.docs.forEach(doc => {
+          batch.delete(doc.ref);
+          deletedCount++;
+        });
+
+        // Delete invites sent by username
+        try {
+          const invitesSentByUsername = await getDocs(
+            query(collection(db, 'invites'), where('fromUsername', '==', username))
+          );
+          invitesSentByUsername.docs.forEach(doc => {
+            batch.delete(doc.ref);
+            deletedCount++;
+          });
+          console.log(`Deleted ${invitesSentByUsername.docs.length} sent invites by username`);
+        } catch (error) {
+          console.warn('Could not delete sent invites by username:', error);
+        }
+
+        // Delete invites received by username
+        try {
+          const invitesReceivedByUsername = await getDocs(
+            query(collection(db, 'invites'), where('toUsername', '==', username))
+          );
+          invitesReceivedByUsername.docs.forEach(doc => {
+            batch.delete(doc.ref);
+            deletedCount++;
+          });
+          console.log(`Deleted ${invitesReceivedByUsername.docs.length} received invites by username`);
+        } catch (error) {
+          console.warn('Could not delete received invites by username:', error);
+        }
+
+        // Delete private messages by username
+        try {
+          const privateMessagesByUsername = await getDocs(
+            query(collection(db, 'privateMessages'), where('username', '==', username))
+          );
+          privateMessagesByUsername.docs.forEach(doc => {
+            batch.delete(doc.ref);
+            deletedCount++;
+          });
+          console.log(`Deleted ${privateMessagesByUsername.docs.length} private messages by username`);
+        } catch (error) {
+          console.warn('Could not delete private messages by username:', error);
+        }
+
+        // Delete private chats where this username is a participant
+        try {
+          const privateChatsByUsername = await getDocs(
+            query(collection(db, 'privateChats'), where('participants', 'array-contains', username))
+          );
+          privateChatsByUsername.docs.forEach(doc => {
+            batch.delete(doc.ref);
+            deletedCount++;
+          });
+          console.log(`Deleted ${privateChatsByUsername.docs.length} private chats by username`);
+        } catch (error) {
+          console.warn('Could not delete private chats by username:', error);
+        }
+      }
       
       await batch.commit();
       console.log(`Manual cleanup completed. Deleted ${deletedCount} documents for UID: ${uid}`);
