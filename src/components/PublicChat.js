@@ -21,7 +21,16 @@ const PublicChat = ({ username }) => {
       setMessages(messageList);
     });
 
-    return () => unsubscribe();
+    // Listen for refresh event from main header
+    const handleRefreshEvent = () => {
+      handleRefresh();
+    };
+    window.addEventListener('refreshPublicChat', handleRefreshEvent);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('refreshPublicChat', handleRefreshEvent);
+    };
   }, []);
 
   useEffect(() => {
@@ -137,29 +146,11 @@ const PublicChat = ({ username }) => {
   const isCurrentUser = (messageUsername) => messageUsername === username;
 
   return (
-    <div className="flex flex-col h-screen bg-gray-900/50">
-      {/* Twitter-style Header - Fixed position */}
-      <div className="bg-gray-800/60 backdrop-blur-sm border-b border-gray-700/50 p-4 lg:p-6 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="text-left">
-            <h1 className="text-xl lg:text-2xl font-bold text-white/90">Public Chat</h1>
-            <p className="text-gray-400/70 text-sm lg:text-base">Join the conversation with everyone</p>
-          </div>
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="p-2 bg-gray-700/50 hover:bg-gray-600/50 disabled:bg-gray-600/20 rounded-lg border border-gray-600/50 hover:border-gray-500/50 disabled:border-gray-500/30 transition-all duration-200"
-            title="Refresh messages"
-          >
-            <svg className={`w-5 h-5 text-gray-400/70 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-          </button>
-        </div>
-      </div>
+    <div className="flex flex-col h-full bg-gray-900/50 relative">
+
 
       {/* Messages Container with WhatsApp-style layout - Scrollable */}
-      <div className="flex-1 overflow-y-auto p-2 lg:p-3 space-y-3 flex flex-col min-h-0">
+      <div className="flex-1 overflow-y-auto p-2 lg:p-3 space-y-3 flex flex-col min-h-0 pb-4" style={{ paddingBottom: '200px' }}>
         {messages.length === 0 ? (
           <div className="text-center text-gray-400/70 py-12">
             <div className="w-16 h-16 bg-gray-800/50 border border-gray-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -282,7 +273,7 @@ const PublicChat = ({ username }) => {
       </div>
 
       {/* Twitter-style Message Input - Fixed position */}
-      <div className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0">
+      <div className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0 fixed bottom-0 left-0 right-0 lg:left-64 xl:right-80 z-10">
         {/* Spam Status Display */}
         {spamError && (
           <div className="px-4 py-2 bg-red-900/30 border border-red-700/50 mb-4">
