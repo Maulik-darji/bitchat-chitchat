@@ -607,15 +607,44 @@ class FirebaseService {
        // Stop all active listeners before deleting account
        this.stopAllListeners();
        
-       // Delete the Firebase Authentication user
-       // This will automatically trigger the Cloud Function to clean up Firestore data
-       await currentUser.delete();
+       // Try to refresh the token first to handle expiration
+       try {
+         await currentUser.getIdToken(true);
+       } catch (tokenError) {
+         console.log('Token refresh failed, trying to re-authenticate');
+         // Try to re-authenticate anonymously
+         try {
+           await signInAnonymously(auth);
+           // Get the new user and try to delete
+           const newUser = auth.currentUser;
+           if (newUser) {
+             await newUser.delete();
+             console.log('User account deleted successfully after re-authentication');
+             this.isInitialized = false;
+             onlineUsers.clear();
+             spamTracker.clear();
+             return;
+           }
+         } catch (reauthError) {
+           console.log('Re-authentication failed, proceeding with manual cleanup');
+         }
+       }
+       
+       // Try to delete the Firebase Authentication user
+       try {
+         await currentUser.delete();
+         console.log('User account deleted successfully');
+       } catch (deleteError) {
+         console.log('Could not delete auth user (token may be expired), proceeding with manual cleanup');
+         
+                   // If deletion fails due to token expiration, do manual cleanup
+          await this.cleanupUserData(currentUser.uid);
+        }
        
        this.isInitialized = false;
        onlineUsers.clear();
        spamTracker.clear();
        
-       console.log('User account deleted successfully');
      } catch (error) {
        console.error('Error deleting user account:', error);
        throw error;
@@ -626,7 +655,7 @@ class FirebaseService {
    * Manual cleanup function - call this when a user is deleted from Authentication
    * This replaces the Cloud Function for users who can't deploy functions
    */
-  async cleanupUserData(uid) {
+  async cleanupUserData(uid, fallbackUsername = null) {
     try {
       console.log(`Starting manual cleanup for UID: ${uid}`);
       
@@ -640,6 +669,10 @@ class FirebaseService {
         const userDoc = usersSnapshot.docs[0];
         username = userDoc.data().username;
         console.log(`Found username for UID: ${username}`);
+      } else if (fallbackUsername) {
+        // If we can't find by UID, use the fallback username
+        username = fallbackUsername;
+        console.log(`Using fallback username: ${username}`);
       }
       
       const batch = writeBatch(db);

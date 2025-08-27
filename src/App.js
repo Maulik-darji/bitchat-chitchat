@@ -68,12 +68,33 @@ function App() {
       setCurrentRoom(null);
     } catch (error) {
       console.error('Delete account error:', error);
-      // If deletion fails, fall back to regular sign out
+      
+      // If deletion fails, try to sign out and clean up manually
       try {
+        // Try to get the current user UID before signing out
+        const currentUser = firebaseService.auth.currentUser;
+        const uid = currentUser?.uid;
+        
+        // Sign out
         await firebaseService.signOut();
+        
+        // If we have a UID, try manual cleanup
+        if (uid) {
+          try {
+            await firebaseService.cleanupUserData(uid, username);
+          } catch (cleanupError) {
+            console.error('Manual cleanup failed:', cleanupError);
+          }
+        }
       } catch (signOutError) {
         console.error('Sign out error:', signOutError);
       }
+      
+      // Clear session regardless of errors
+      sessionStorage.removeItem('username');
+      setUsername(null);
+      setCurrentView('home');
+      setCurrentRoom(null);
     } finally {
       setIsLoggingOut(false);
     }
