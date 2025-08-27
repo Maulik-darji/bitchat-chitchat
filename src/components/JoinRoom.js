@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import firebaseService from '../lib/firebase';
 
 const JoinRoom = ({ username, onJoinRoom, onClose }) => {
   const [roomCode, setRoomCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState('');
+  const [awaitingManualPaste, setAwaitingManualPaste] = useState(false);
+  const inputRef = useRef(null);
+  const manualPasteRef = useRef(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -26,11 +29,54 @@ const JoinRoom = ({ username, onJoinRoom, onClose }) => {
 
   const handlePasteFromClipboard = async () => {
     try {
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        setError('');
+        setAwaitingManualPaste(true);
+        // Focus hidden paste catcher to capture the next Ctrl+V
+        setTimeout(() => {
+          if (manualPasteRef.current) manualPasteRef.current.focus();
+        }, 0);
+        return;
+      }
+
       const text = await navigator.clipboard.readText();
-      setRoomCode(text);
+      const code = (text || '').trim();
+      if (!code) {
+        setError('Clipboard is empty. Copy a room code first.');
+        if (inputRef.current) inputRef.current.focus();
+        return;
+      }
+
+      setRoomCode(code);
+      if (inputRef.current) {
+        inputRef.current.focus();
+        const len = code.length;
+        inputRef.current.setSelectionRange(len, len);
+      }
     } catch (error) {
       console.error('Failed to read clipboard:', error);
+      // Fall back to manual paste catcher
+      setError('');
+      setAwaitingManualPaste(true);
+      setTimeout(() => {
+        if (manualPasteRef.current) manualPasteRef.current.focus();
+      }, 0);
     }
+  };
+
+  const handleManualPaste = (e) => {
+    const pasted = (e.clipboardData || window.clipboardData).getData('text');
+    const code = (pasted || '').trim();
+    if (code) {
+      setRoomCode(code);
+      setAwaitingManualPaste(false);
+      if (inputRef.current) {
+        inputRef.current.focus();
+        const len = code.length;
+        inputRef.current.setSelectionRange(len, len);
+      }
+    }
+    e.preventDefault();
   };
 
   return (
@@ -63,6 +109,7 @@ const JoinRoom = ({ username, onJoinRoom, onClose }) => {
                 className="flex-1 px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent text-white placeholder-gray-400"
                 placeholder="Enter room code"
                 disabled={isJoining}
+                ref={inputRef}
               />
               <button
                 type="button"
@@ -70,9 +117,22 @@ const JoinRoom = ({ username, onJoinRoom, onClose }) => {
                 className="px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
                 title="Paste from clipboard"
               >
-                📋
+                <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                  <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M9 2a1 1 0 00-1 1v1H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 00-1-1H9z" />
+                </svg>
               </button>
             </div>
+            {awaitingManualPaste && (
+              <div className="mt-2">
+                <textarea
+                  ref={manualPasteRef}
+                  onPaste={handleManualPaste}
+                  className="sr-only"
+                  aria-label="Paste your room code"
+                />
+                <p className="text-gray-400 text-xs">Press Ctrl+V / ⌘+V to paste your code now.</p>
+              </div>
+            )}
           </div>
 
           {error && (

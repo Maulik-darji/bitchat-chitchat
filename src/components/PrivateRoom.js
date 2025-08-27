@@ -16,7 +16,9 @@ const PrivateRoom = (props) => {
   const messagesEndRef = useRef(null);
   const messagesUnsubRef = useRef(null);
   const usersUnsubRef = useRef(null);
+  const wasMemberRef = useRef(null);
   const inputRef = useRef(null);
+  const [isMembersOpen, setIsMembersOpen] = useState(false);
   const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
   const focusInput = () => {
     if (!isDesktop) return;
@@ -86,17 +88,22 @@ const PrivateRoom = (props) => {
     });
     const unsubscribeUsers = firebaseService.onRoomUsersUpdate(room.roomId, (userList) => {
       setRoomUsers(userList);
-      // Only decide redirect once we have a non-empty list of members
-      if (Array.isArray(userList) && userList.length > 0) {
-        const stillMember = userList.some(u => u.username === username);
-        if (!stillMember) {
-          if (typeof props.onViewChange === 'function') {
-            props.onViewChange('home');
-          }
-          if (typeof onLeaveRoom === 'function') {
-            onLeaveRoom();
-          }
+      const stillMember = Array.isArray(userList) && userList.some(u => u.username === username);
+      // Alert only on transition from wasMember -> not a member
+      if (wasMemberRef.current === true && stillMember === false) {
+        try { alert('You were removed by the room owner'); } catch (_) {}
+        if (typeof props.onViewChange === 'function') {
+          props.onViewChange('home');
         }
+        if (typeof onLeaveRoom === 'function') {
+          onLeaveRoom();
+        }
+      }
+      // Initialize or update previous state
+      if (wasMemberRef.current === null) {
+        wasMemberRef.current = stillMember;
+      } else if (wasMemberRef.current !== stillMember) {
+        wasMemberRef.current = stillMember;
       }
     });
     messagesUnsubRef.current = unsubscribeMessages;
@@ -249,9 +256,9 @@ const PrivateRoom = (props) => {
   const isCurrentUser = (messageUsername) => messageUsername === username;
 
   return (
-    <div className="flex h-screen lg:h-full bg-gray-900/50">
-      {/* Users Sidebar - Fixed position */}
-      <div className="w-64 bg-gray-800/60 backdrop-blur-sm border-r border-gray-700/50 flex flex-col flex-shrink-0">
+    <div className="flex h-[100dvh] lg:h-full bg-gray-900/50">
+      {/* Users Sidebar - Desktop */}
+      <div className="hidden lg:flex w-64 bg-gray-800/60 backdrop-blur-sm border-r border-gray-700/50 flex-col flex-shrink-0">
         {/* Room Header */}
         <div className="p-4 lg:p-6 border-b border-gray-700/50 flex-shrink-0">
           <div className="mb-4 text-left">
@@ -320,12 +327,52 @@ const PrivateRoom = (props) => {
         </div>
       </div>
 
-      {/* Chat Area - Fixed position */}
+      {/* Chat Area */}
       <div className="flex-1 flex flex-col min-h-0">
+        {/* Mobile Header */}
+        <div className="lg:hidden sticky top-0 z-30 bg-gray-800/60 backdrop-blur-sm border-b border-gray-700/50 p-3 flex items-center justify-between">
+          <div className="flex items-center space-x-3 min-w-0">
+            <button
+              onClick={() => setIsMembersOpen(true)}
+              className="text-gray-300 hover:text-white p-2 rounded-lg hover:bg-gray-700/40"
+              title="Show members"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <div className="min-w-0">
+              <h2 className="text-base font-bold text-white/90 truncate">{room.roomName}</h2>
+              <p className="text-gray-400/70 text-xs truncate">{roomUsers.length} members</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            {isCreator && (
+              <button
+                onClick={handleCopyCode}
+                className="text-gray-400/80 hover:text-yellow-400 p-2 rounded-lg hover:bg-gray-700/40"
+                title="Copy room code"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+            )}
+            <button
+              onClick={handleLeaveClick}
+              className="text-red-400/80 hover:text-red-300 p-2 rounded-lg hover:bg-red-900/20"
+              title="Leave room"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          </div>
+        </div>
 
         
-        {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto p-4 lg:p-6">
+        {/* Messages Scroll Area */}
+        <div className="flex-1 overflow-y-auto p-3 lg:p-6 min-h-0">
           {messages.length === 0 ? (
             <div className="text-center text-gray-400/70 py-16">
               <p className="text-xl font-medium mb-2">No messages yet</p>
@@ -343,7 +390,7 @@ const PrivateRoom = (props) => {
                           ? 'bg-green-600/20 border-green-500/30 text-white/90' 
                           : 'bg-gray-800/40 border-gray-700/30 text-white/90'
                         } 
-                        backdrop-blur-sm rounded-2xl px-4 py-2.5 border break-words inline-block max-w-full
+                        backdrop-blur-sm rounded-2xl px-3 py-2 border break-words inline-block max-w-full
                       `}>
                         <p className="text-sm leading-relaxed mb-2">
                           {message.message}
@@ -383,15 +430,15 @@ const PrivateRoom = (props) => {
           )}
         </div>
 
-        {/* Message Input - Fixed position */}
-        <div className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0">
-          <form onSubmit={handleSendMessage} className="flex items-center space-x-4">
+        {/* Message Input */}
+        <div className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-3 lg:p-6 flex-shrink-0">
+          <form onSubmit={handleSendMessage} className="flex items-center space-x-2 lg:space-x-4">
             <input
               type="text"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Type your message..."
-              className="flex-1 px-4 py-3 rounded-xl text-sm lg:text-base transition-all duration-150 bg-gray-700/50 border border-gray-600/50 text-white/90 placeholder-gray-400/70 focus:ring-2 focus:ring-green-500/50 focus:border-green-500/50 focus:outline-none"
+              className="flex-1 px-3 py-2 lg:px-4 lg:py-3 rounded-xl text-sm lg:text-base transition-all duration-150 bg-gray-700/50 border border-gray-600/50 text-white/90 placeholder-gray-400/70 focus:ring-2 focus:ring-green-500/50 focus:border-green-500/50 focus:outline-none"
               disabled={isSending}
               ref={inputRef}
               autoFocus={isDesktop}
@@ -400,7 +447,7 @@ const PrivateRoom = (props) => {
             <button
               type="submit"
               disabled={!newMessage.trim() || isSending}
-              className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 text-sm lg:text-base flex items-center justify-center min-w-[80px] ${
+              className={`px-4 py-2 lg:px-6 lg:py-3 rounded-xl font-medium transition-all duration-200 text-sm lg:text-base flex items-center justify-center min-w-[72px] lg:min-w-[80px] ${
                 newMessage.trim() && !isSending
                   ? 'bg-green-600/20 hover:bg-green-600/30 text-green-400 hover:text-green-300 border border-green-500/30 hover:border-green-500/50 shadow-lg hover:shadow-green-500/10'
                   : 'bg-gray-600/20 text-gray-500 border border-gray-500/30 cursor-not-allowed'
@@ -418,6 +465,55 @@ const PrivateRoom = (props) => {
           </form>
         </div>
       </div>
+
+      {/* Members Drawer - Mobile */}
+      {isMembersOpen && (
+        <div className="lg:hidden fixed inset-0 z-40">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setIsMembersOpen(false)} />
+          <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-gray-800/95 backdrop-blur-sm border-r border-gray-700/50 flex flex-col">
+            <div className="p-4 border-b border-gray-700/50 flex items-center justify-between">
+              <div>
+                <h3 className="text-white/90 font-semibold">Members</h3>
+                <p className="text-gray-400/70 text-xs">{roomUsers.length} total</p>
+              </div>
+              <button
+                onClick={() => setIsMembersOpen(false)}
+                className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700/40"
+                title="Close"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 min-h-0">
+              <div className="space-y-3">
+                {roomUsers.map((user) => (
+                  <div key={user.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-700/30 transition-all duration-200 group">
+                    <div className="flex items-center justify-start flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className="text-white/90 font-medium text-sm truncate">{user.username}</p>
+                        <p className="text-gray-400/70 text-xs">Online</p>
+                      </div>
+                    </div>
+                    {isCreator && user.username !== username && (
+                      <button
+                        onClick={() => handleRemoveUser(user.id, user.username)}
+                        className="text-gray-400/70 hover:text-red-400 hover:bg-red-900/20 p-2 rounded-lg transition-all duration-200 flex-shrink-0"
+                        title={`Remove ${user.username} from room`}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

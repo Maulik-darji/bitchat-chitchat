@@ -1199,11 +1199,46 @@ class FirebaseService {
       console.log('Creating private chat:', { chatId, user1, user2 });
 
       // Check if chat already exists
-      const existingChat = await getDoc(doc(db, COLLECTIONS.PRIVATE_CHATS, chatId));
-      if (existingChat.exists()) {
-        console.log('Private chat already exists:', chatId);
-        return chatId;
-      }
+      const chatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, chatId);
+      const existingChat = await getDoc(chatRef);
+      if (existingChat.exists()) {
+        // Ensure both users are present in participants/participantUids (chat may have removed one user previously)
+        const chatData = existingChat.data() || {};
+        const participants = Array.isArray(chatData.participants) ? chatData.participants : [];
+        let needsUpdate = false;
+        const updatedParticipants = [...participants];
+        for (const u of sortedUsers) {
+          if (!updatedParticipants.includes(u)) {
+            updatedParticipants.push(u);
+            needsUpdate = true;
+          }
+        }
+
+        // Maintain participantUids as well when possible
+        let updatedParticipantUids = Array.isArray(chatData.participantUids) ? [...chatData.participantUids] : [];
+        try {
+          const [user1Doc, user2Doc] = await Promise.all([
+            getDoc(doc(db, COLLECTIONS.USERS, user1)),
+            getDoc(doc(db, COLLECTIONS.USERS, user2))
+          ]);
+          const user1Uid = user1Doc.exists() ? user1Doc.data().uid : undefined;
+          const user2Uid = user2Doc.exists() ? user2Doc.data().uid : undefined;
+          if (user1Uid && !updatedParticipantUids.includes(user1Uid)) { updatedParticipantUids.push(user1Uid); needsUpdate = true; }
+          if (user2Uid && !updatedParticipantUids.includes(user2Uid)) { updatedParticipantUids.push(user2Uid); needsUpdate = true; }
+        } catch (_) {}
+
+        if (needsUpdate) {
+          await updateDoc(chatRef, {
+            participants: updatedParticipants,
+            participantUids: updatedParticipantUids,
+            lastMessageAt: serverTimestamp()
+          });
+          console.log('Updated existing private chat participants for rejoin:', chatId);
+        } else {
+          console.log('Private chat already exists with both participants:', chatId);
+        }
+        return chatId;
+      }
 
             // Get UIDs for both users
       const user1Doc = await getDoc(doc(db, COLLECTIONS.USERS, user1));
@@ -1216,7 +1251,6 @@ class FirebaseService {
       const user1Uid = user1Doc.data().uid;
       const user2Uid = user2Doc.data().uid;
 
-      const chatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, chatId);
       await setDoc(chatRef, {
         id: chatId,
         participants: [user1, user2],
