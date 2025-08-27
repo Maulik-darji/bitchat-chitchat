@@ -16,6 +16,17 @@ const PrivateRoom = (props) => {
   const messagesEndRef = useRef(null);
   const messagesUnsubRef = useRef(null);
   const usersUnsubRef = useRef(null);
+  const inputRef = useRef(null);
+  const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+  const focusInput = () => {
+    if (!isDesktop) return;
+    if (typeof window !== 'undefined' && window.__modalOpen) return;
+    const el = inputRef.current;
+    if (!el) return;
+    if (document.activeElement !== el) {
+      try { el.focus({ preventScroll: true }); } catch (_) { el.focus(); }
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -75,14 +86,16 @@ const PrivateRoom = (props) => {
     });
     const unsubscribeUsers = firebaseService.onRoomUsersUpdate(room.roomId, (userList) => {
       setRoomUsers(userList);
-      // If current user is no longer in the room, auto-redirect to home
-      const stillMember = userList.some(u => u.username === username);
-      if (!stillMember) {
-        if (typeof props.onViewChange === 'function') {
-          props.onViewChange('home');
-        }
-        if (typeof onLeaveRoom === 'function') {
-          onLeaveRoom();
+      // Only decide redirect once we have a non-empty list of members
+      if (Array.isArray(userList) && userList.length > 0) {
+        const stillMember = userList.some(u => u.username === username);
+        if (!stillMember) {
+          if (typeof props.onViewChange === 'function') {
+            props.onViewChange('home');
+          }
+          if (typeof onLeaveRoom === 'function') {
+            onLeaveRoom();
+          }
         }
       }
     });
@@ -113,6 +126,19 @@ const PrivateRoom = (props) => {
         scrollToBottom();
       }, 100);
       return () => clearTimeout(timer);
+    }
+  }, [messages.length]);
+
+  // Desktop: keep the input focused so users can type next message immediately
+  useEffect(() => {
+    if (isDesktop) {
+      focusInput();
+    }
+  }, [isDesktop]);
+
+  useEffect(() => {
+    if (isDesktop) {
+      focusInput();
     }
   }, [messages.length]);
 
@@ -153,6 +179,11 @@ const PrivateRoom = (props) => {
       setMessages(prev => prev.filter(msg => !msg.isOptimistic));
     } finally {
       setIsSending(false);
+      if (isDesktop) {
+        focusInput();
+        setTimeout(focusInput, 0);
+        setTimeout(focusInput, 100);
+      }
     }
   };
 
@@ -362,7 +393,9 @@ const PrivateRoom = (props) => {
               placeholder="Type your message..."
               className="flex-1 px-4 py-3 rounded-xl text-sm lg:text-base transition-all duration-150 bg-gray-700/50 border border-gray-600/50 text-white/90 placeholder-gray-400/70 focus:ring-2 focus:ring-green-500/50 focus:border-green-500/50 focus:outline-none"
               disabled={isSending}
-              autoFocus
+              ref={inputRef}
+              autoFocus={isDesktop}
+              onBlur={() => { if (isDesktop) setTimeout(focusInput, 0); }}
             />
             <button
               type="submit"

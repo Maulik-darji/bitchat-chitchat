@@ -1,11 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import firebaseService from '../lib/firebase';
 
-const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }) => {
+const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, hideHeader = false }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+  const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+  const focusInput = () => {
+    if (!isDesktop) return;
+    if (typeof window !== 'undefined' && window.__modalOpen) return;
+    const el = inputRef.current;
+    if (!el) return;
+    if (document.activeElement !== el) {
+      try { el.focus({ preventScroll: true }); } catch (_) { el.focus(); }
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -63,6 +74,15 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
     scrollToBottom();
   }, [messages]);
 
+  // Desktop: keep input focused
+  useEffect(() => {
+    if (isDesktop) focusInput();
+  }, [isDesktop]);
+
+  useEffect(() => {
+    if (isDesktop) focusInput();
+  }, [messages.length]);
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() || isSending) return;
@@ -97,6 +117,11 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
       console.error('Error sending message:', error);
     } finally {
       setIsSending(false);
+      if (isDesktop) {
+        focusInput();
+        setTimeout(focusInput, 0);
+        setTimeout(focusInput, 100);
+      }
     }
   };
 
@@ -111,60 +136,67 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
   const isCurrentUser = (messageUsername) => messageUsername === username;
 
   return (
-    <div className="flex h-screen lg:h-full bg-gray-900/50">
+    <div className="flex h-full bg-gray-900/50">
       {/* Chat Area */}
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Chat Header (sticky on mobile) */}
-        <div className="sticky top-0 z-30 bg-gray-800/60 backdrop-blur-sm border-b border-gray-700/50 p-4 lg:p-6 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-purple-600/20 border border-purple-500/30 rounded-full flex items-center justify-center">
-                <span className="text-purple-400 font-bold text-lg">
-                  {otherUsername.charAt(0).toUpperCase()}
-                </span>
-              </div>
-              <div>
-                <h1 className="text-xl lg:text-2xl font-bold text-white/90">{otherUsername}</h1>
-                <p className="text-purple-400/70 text-sm lg:text-base">Private Chat</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={async () => {
-                  if (window.confirm(`Are you sure you want to remove ${otherUsername} from this private chat?`)) {
-                    try {
-                      await firebaseService.removeUserFromPrivateChat(chatId, otherUsername);
-                      if (onUserRemoved) {
-                        onUserRemoved(otherUsername);
+        {/* Scroll container holds sticky header + messages so header sticks while scrolling */}
+        <div
+          className="flex-1 overflow-y-auto flex flex-col min-h-0 will-change-scroll"
+          style={{ WebkitOverflowScrolling: 'touch', position: 'relative' }}
+        >
+          {/* Optional internal header (hidden when parent renders a fixed header) */}
+          {!hideHeader && (
+            <div className="sticky top-0 z-30 bg-gray-800/60 backdrop-blur-sm border-b border-gray-700/50 p-4 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 lg:w-10 lg:h-10 bg-purple-600/20 border border-purple-500/30 rounded-full flex items-center justify-center">
+                    <span className="text-purple-400 font-bold text-lg">
+                      {otherUsername.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-bold text-white/90">{otherUsername}</h1>
+                    <p className="hidden lg:block text-purple-400/70 text-sm">Private Chat</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={async () => {
+                      if (window.confirm(`Are you sure you want to remove ${otherUsername} from this private chat?`)) {
+                        try {
+                          await firebaseService.removeUserFromPrivateChat(chatId, otherUsername);
+                          if (onUserRemoved) {
+                            onUserRemoved(otherUsername);
+                          }
+                        } catch (error) {
+                          console.error('Error removing user:', error);
+                          alert('Failed to remove user from chat');
+                        }
                       }
-                    } catch (error) {
-                      console.error('Error removing user:', error);
-                      alert('Failed to remove user from chat');
-                    }
-                  }
-                }}
-                className="text-red-400 hover:text-red-300 transition-colors p-2 rounded-lg hover:bg-red-600/20"
-                title="Remove user from chat"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-              </button>
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-600/20"
-                title="Exit private chat"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+                    }}
+                    className="text-red-400 hover:text-red-300 transition-colors p-2 rounded-lg hover:bg-red-600/20"
+                    title="Remove user from chat"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-600/20"
+                    title="Exit private chat"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-2 lg:p-3 space-y-3 flex flex-col min-h-0">
+          {/* Messages */}
+          <div className="flex-1 p-2 lg:p-3 space-y-3 flex flex-col min-h-0">
           {messages.length === 0 ? (
             <div className="text-center text-gray-400/70 py-12">
               <div className="w-16 h-16 bg-purple-800/50 border border-purple-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -209,10 +241,11 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
               <div ref={messagesEndRef} />
             </>
           )}
+          </div>
         </div>
 
         {/* Message Input */}
-        <div className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0">
+        <div className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0" onClick={() => { if (isDesktop) inputRef.current?.focus(); }}>
           <form onSubmit={handleSendMessage} className="flex space-x-3">
             <input
               type="text"
@@ -221,6 +254,9 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
               placeholder="Type your message..."
               className="flex-1 px-4 py-3 bg-gray-700/50 border border-gray-600/50 rounded-lg text-white/90 placeholder-gray-400/70 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
               disabled={isSending}
+              ref={inputRef}
+              autoFocus={isDesktop}
+              onBlur={() => { if (isDesktop) setTimeout(focusInput, 0); }}
             />
             <button
               type="submit"
@@ -230,6 +266,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
                   ? 'bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 hover:text-purple-300 border border-purple-500/30 hover:border-purple-500/50'
                   : 'bg-gray-600/20 text-gray-500 border border-gray-500/30 cursor-not-allowed'
               }`}
+              onMouseDown={(e) => { e.preventDefault(); }}
             >
               {isSending ? (
                 <div className="flex items-center space-x-2">

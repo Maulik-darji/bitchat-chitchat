@@ -12,8 +12,9 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
-  const isDesktop = typeof window !== 'undefined' && (window.innerWidth >= 1024 || (window.matchMedia && window.matchMedia('(pointer:fine)').matches));
+  const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
   const focusInput = () => {
+    if (typeof window !== 'undefined' && window.__modalOpen) return;
     const el = inputRef.current;
     if (!el) return;
     if (document.activeElement !== el) {

@@ -9,6 +9,12 @@ const InviteModal = ({ username, onClose, onInviteSent }) => {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
 
+  // Mark modal open/close to pause chat autofocus
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.__modalOpen = true;
+    return () => { if (typeof window !== 'undefined') window.__modalOpen = false; };
+  }, []);
+
   useEffect(() => {
     const searchUsers = async () => {
       if (searchTerm.trim().length < 2) {
@@ -32,6 +38,7 @@ const InviteModal = ({ username, onClose, onInviteSent }) => {
 
     const debounceTimer = setTimeout(searchUsers, 300);
     return () => clearTimeout(debounceTimer);
+    return () => {};
   }, [searchTerm, username]);
 
   const handleSendInvite = async (targetUsername) => {

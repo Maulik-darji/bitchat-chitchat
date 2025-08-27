@@ -36,6 +36,33 @@ function App() {
           setUsername(savedUsername);
           // Backfill uid onto legacy user doc so server cleanup works by UID
           await firebaseService.ensureUserUid(savedUsername);
+
+          // Restore last view and context
+          const savedView = sessionStorage.getItem('currentView');
+          const savedRoom = sessionStorage.getItem('currentRoom');
+          const savedPrivateChat = sessionStorage.getItem('currentPrivateChat');
+
+          if (savedView) {
+            setCurrentView(savedView);
+          }
+
+          if (savedRoom) {
+            try {
+              const parsedRoom = JSON.parse(savedRoom);
+              if (parsedRoom && parsedRoom.id && parsedRoom.name) {
+                setCurrentRoom(parsedRoom);
+              }
+            } catch (_) {}
+          }
+
+          if (savedPrivateChat) {
+            try {
+              const parsedChat = JSON.parse(savedPrivateChat);
+              if (parsedChat && parsedChat.chatId && parsedChat.otherUsername) {
+                setCurrentPrivateChat(parsedChat);
+              }
+            } catch (_) {}
+          }
         }
       } catch (error) {
         console.error('App initialization failed:', error);
@@ -46,6 +73,33 @@ function App() {
 
     initializeApp();
   }, []);
+
+  // Persist navigation state so refresh resumes where user left off
+  useEffect(() => {
+    if (username) {
+      sessionStorage.setItem('currentView', currentView);
+    }
+  }, [username, currentView]);
+
+  useEffect(() => {
+    if (username) {
+      if (currentRoom) {
+        sessionStorage.setItem('currentRoom', JSON.stringify(currentRoom));
+      } else {
+        sessionStorage.removeItem('currentRoom');
+      }
+    }
+  }, [username, currentRoom]);
+
+  useEffect(() => {
+    if (username) {
+      if (currentPrivateChat) {
+        sessionStorage.setItem('currentPrivateChat', JSON.stringify(currentPrivateChat));
+      } else {
+        sessionStorage.removeItem('currentPrivateChat');
+      }
+    }
+  }, [username, currentPrivateChat]);
 
   const handleUsernameSet = async (newUsername) => {
     try {
@@ -360,7 +414,13 @@ function App() {
           {currentView === 'home' && (
             <div className="h-full flex flex-col">
               {/* Fixed header to avoid keyboard scroll push on mobile */}
-              <div className="fixed top-0 left-0 right-0 z-50 bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4">
+              <div
+                className="fixed top-0 z-50 bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4"
+                style={{
+                  left: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${sidebarWidth}px` : '0px',
+                  right: typeof window !== 'undefined' && window.innerWidth >= 1280 ? '320px' : '0px'
+                }}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     {/* Hamburger Menu - Mobile Only */}
@@ -399,7 +459,13 @@ function App() {
           {currentView === 'private-room' && currentRoom && (
             <div className="h-full flex flex-col">
               {/* Fixed header to avoid keyboard scroll push on mobile */}
-              <div className="fixed top-0 left-0 right-0 z-50 bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4">
+              <div
+                className="fixed top-0 z-50 bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4"
+                style={{
+                  left: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${sidebarWidth}px` : '0px',
+                  right: typeof window !== 'undefined' && window.innerWidth >= 1280 ? '320px' : '0px'
+                }}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     {/* Hamburger Menu - Mobile Only */}
