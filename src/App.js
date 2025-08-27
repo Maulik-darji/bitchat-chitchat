@@ -359,8 +359,8 @@ function App() {
         <div className="flex-1 h-full overflow-hidden">
           {currentView === 'home' && (
             <div className="h-full flex flex-col">
-              {/* Header */}
-              <div className="bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4">
+              {/* Fixed header to avoid keyboard scroll push on mobile */}
+              <div className="fixed top-0 left-0 right-0 z-50 bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     {/* Hamburger Menu - Mobile Only */}
@@ -389,9 +389,8 @@ function App() {
                   </button>
                 </div>
               </div>
-              
-              {/* Chat Area */}
-              <div className="flex-1 overflow-y-auto">
+              {/* Scroll area offset by header height */}
+              <div className="flex-1 overflow-y-auto pt-16">
                 <PublicChat username={username} sidebarWidth={sidebarWidth} />
               </div>
             </div>
@@ -399,8 +398,8 @@ function App() {
 
           {currentView === 'private-room' && currentRoom && (
             <div className="h-full flex flex-col">
-              {/* Header */}
-              <div className="bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4">
+              {/* Fixed header to avoid keyboard scroll push on mobile */}
+              <div className="fixed top-0 left-0 right-0 z-50 bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     {/* Hamburger Menu - Mobile Only */}
@@ -424,9 +423,8 @@ function App() {
                   </button>
                 </div>
               </div>
-              
-              {/* Chat Area */}
-              <div className="flex-1 overflow-y-auto">
+              {/* Scroll area offset by header height */}
+              <div className="flex-1 overflow-y-auto pt-16">
                 <PrivateRoom
                   roomId={currentRoom.id}
                   roomName={currentRoom.name}

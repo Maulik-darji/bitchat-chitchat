@@ -328,7 +328,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
             disabled={isSending || !spamStatus.canSend}
             className="flex-1 bg-gray-800 text-white px-4 py-3 rounded-2xl border border-gray-700 focus:border-gray-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             ref={inputRef}
-            autoFocus
+            autoFocus={isDesktop}
             onBlur={() => {
               // Immediately re-focus on desktop if focus leaves input
               if (isDesktop) setTimeout(focusInput, 0);

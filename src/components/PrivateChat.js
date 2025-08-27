@@ -114,8 +114,8 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
     <div className="flex h-screen lg:h-full bg-gray-900/50">
       {/* Chat Area */}
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Chat Header */}
-        <div className="bg-gray-800/60 backdrop-blur-sm border-b border-gray-700/50 p-4 lg:p-6 flex-shrink-0">
+        {/* Chat Header (sticky on mobile) */}
+        <div className="sticky top-0 z-30 bg-gray-800/60 backdrop-blur-sm border-b border-gray-700/50 p-4 lg:p-6 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-purple-600/20 border border-purple-500/30 rounded-full flex items-center justify-center">
