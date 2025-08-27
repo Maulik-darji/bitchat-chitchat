@@ -26,13 +26,13 @@ import { getFunctions } from 'firebase/functions';
 
 // Firebase configuration - Project credentials
 const firebaseConfig = {
-  apiKey: "AIzaSyCKQar0RRhf_0F9HK0xSCOMmaNbJL7_1pM",
-  authDomain: "aerobic-copilot-449112-s6.firebaseapp.com",
-  projectId: "aerobic-copilot-449112-s6",
-  storageBucket: "aerobic-copilot-449112-s6.firebasestorage.app",
-  messagingSenderId: "790758007005",
-  appId: "1:790758007005:web:25588360b14774e2737b34",
-  measurementId: "G-4YR66Y35TR"
+  apiKey: "AIzaSyAEzg2kzB8Kt1knqU4i3xJPEF12wtmyMws",
+  authDomain: "digital-yeti-469507-v1.firebaseapp.com",
+  projectId: "digital-yeti-469507-v1",
+  storageBucket: "digital-yeti-469507-v1.firebasestorage.app",
+  messagingSenderId: "162325509426",
+  appId: "1:162325509426:web:5feb7b36cbaf30ba60132b",
+  measurementId: "G-YLC2PQJLRR"
 };
 
 // Initialize Firebase

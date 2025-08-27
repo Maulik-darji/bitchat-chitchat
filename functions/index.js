@@ -58,7 +58,7 @@ exports.onUserDeleted = functions.auth.user().onDelete(async (user) => {
     roomUsers.docs.forEach(doc => {
       batch.delete(doc.ref);
       deletedCount++;
-    });n
+    });
 
     // Delete rooms created by user
     const rooms = await db

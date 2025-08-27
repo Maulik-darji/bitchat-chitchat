@@ -23,7 +23,8 @@
     }
   ],
   "hosting": {
-    "public": "public",
+    "site": "digital-yeti-469507-v1",
+    "public": "build",
     "ignore": [
       "firebase.json",
       "**/.*",
