@@ -11,6 +11,15 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
   const [spamError, setSpamError] = useState('');
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+  const isDesktop = typeof window !== 'undefined' && (window.innerWidth >= 1024 || (window.matchMedia && window.matchMedia('(pointer:fine)').matches));
+  const focusInput = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    if (document.activeElement !== el) {
+      try { el.focus({ preventScroll: true }); } catch (_) { el.focus(); }
+    }
+  };
   
 
 
@@ -71,6 +80,20 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
     return () => clearInterval(interval);
   }, [username, spamError]);
 
+  // Desktop: keep the input focused so users can type next message immediately
+  useEffect(() => {
+    if (isDesktop) {
+      focusInput();
+    }
+  }, [isDesktop]);
+
+  // Also re-focus after message list changes (common blur cause in SPA hot UI updates)
+  useEffect(() => {
+    if (isDesktop) {
+      focusInput();
+    }
+  }, [messages.length]);
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() || isSending) return;
@@ -113,6 +136,11 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
       setMessages(prev => prev.filter(msg => !msg.isOptimistic));
     } finally {
       setIsSending(false);
+      if (isDesktop) {
+        focusInput();
+        setTimeout(focusInput, 0);
+        setTimeout(focusInput, 100);
+      }
     }
   };
 
@@ -281,6 +309,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
           left: window.innerWidth >= 1024 ? `${sidebarWidth}px` : '0px',
           right: window.innerWidth >= 1280 ? '320px' : '0px'
         }}
+        onClick={() => { if (isDesktop) inputRef.current?.focus(); }}
       >
         {/* Spam Error Display - Only show when there's an actual error */}
         {spamError && (
@@ -298,11 +327,21 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
             placeholder="Type your message..."
             disabled={isSending || !spamStatus.canSend}
             className="flex-1 bg-gray-800 text-white px-4 py-3 rounded-2xl border border-gray-700 focus:border-gray-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            ref={inputRef}
+            autoFocus
+            onBlur={() => {
+              // Immediately re-focus on desktop if focus leaves input
+              if (isDesktop) setTimeout(focusInput, 0);
+            }}
           />
           <button
             type="submit"
             disabled={!newMessage.trim() || isSending || !spamStatus.canSend}
             className="bg-gray-600 hover:bg-gray-500 text-white px-6 py-3 rounded-2xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            onMouseDown={(e) => {
+              // Prevent button from stealing focus before submit
+              e.preventDefault();
+            }}
           >
             {isSending ? 'Sending...' : 'Send'}
           </button>
