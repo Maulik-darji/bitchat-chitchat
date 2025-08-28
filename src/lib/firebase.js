@@ -27,13 +27,13 @@ import { getFunctions } from 'firebase/functions';
 
 // Firebase configuration - Project credentials
 const firebaseConfig = {
-  apiKey: "AIzaSyAEzg2kzB8Kt1knqU4i3xJPEF12wtmyMws",
-  authDomain: "digital-yeti-469507-v1.firebaseapp.com",
-  projectId: "digital-yeti-469507-v1",
-  storageBucket: "digital-yeti-469507-v1.firebasestorage.app",
-  messagingSenderId: "162325509426",
-  appId: "1:162325509426:web:5feb7b36cbaf30ba60132b",
-  measurementId: "G-YLC2PQJLRR"
+  apiKey: "AIzaSyAKjAAHMPsHR65B-tNT9FzfsfLJ-OwrdkI",
+  authDomain: "fluid-cosmos-469510-q8.firebaseapp.com",
+  projectId: "fluid-cosmos-469510-q8",
+  storageBucket: "fluid-cosmos-469510-q8.firebasestorage.app",
+  messagingSenderId: "86564786373",
+  appId: "1:86564786373:web:d71885afea20c0ac08e0ac",
+  measurementId: "G-QETQ5QT99M"
 };
 
 // Initialize Firebase
