@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import firebaseService from '../lib/firebase';
+import ContentModeration from './ContentModeration';
+import { isMessageClean } from '../lib/contentFilter';
 
 const PublicChat = ({ username, sidebarWidth = 256 }) => {
   const [messages, setMessages] = useState([]);
@@ -11,6 +13,8 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
   const [spamError, setSpamError] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
+  const [showContentModeration, setShowContentModeration] = useState(false);
+  const [moderationMessage, setModerationMessage] = useState('');
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
@@ -101,6 +105,14 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
     if (!newMessage.trim() || isSending) return;
 
     const messageText = newMessage.trim();
+    
+    // Check content moderation
+    if (!isMessageClean(messageText)) {
+      setModerationMessage(messageText);
+      setShowContentModeration(true);
+      return;
+    }
+    
     setNewMessage('');
     setIsSending(true);
 
@@ -200,6 +212,132 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
     }
   };
 
+  const handleModeratedSend = async (messageToSend) => {
+    setShowContentModeration(false);
+    setModerationMessage('');
+    
+    if (messageToSend !== moderationMessage) {
+      // User chose to send filtered message
+      setNewMessage('');
+      setIsSending(true);
+      
+      try {
+        // Check spam protection
+        const spamCheck = firebaseService.checkSpam(username);
+        if (!spamCheck.allowed) {
+          setSpamError(spamCheck.reason);
+          setIsSending(false);
+          return;
+        }
+
+        // Create optimistic message
+        const optimisticMessage = {
+          id: `temp_${Date.now()}`,
+          username,
+          message: messageToSend,
+          timestamp: new Date(),
+          isOptimistic: true,
+          replyTo: replyingTo ? {
+            id: replyingTo.id,
+            username: replyingTo.username,
+            message: replyingTo.message
+          } : null
+        };
+
+        // Add to local state immediately
+        setMessages(prev => [...prev, optimisticMessage]);
+
+        // Send to Firebase
+        await firebaseService.sendPublicMessage(username, messageToSend, replyingTo ? {
+          id: replyingTo.id,
+          username: replyingTo.username,
+          message: replyingTo.message
+        } : null);
+
+        // Remove optimistic message and let Firebase update handle the real message
+        setMessages(prev => prev.filter(msg => !msg.isOptimistic));
+        
+        // Clear reply state AFTER successful send
+        setReplyingTo(null);
+      } catch (error) {
+        console.error('Error sending moderated message:', error);
+        setSpamError(error.message);
+        
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(msg => !msg.isOptimistic));
+      } finally {
+        setIsSending(false);
+        if (isDesktop) {
+          focusInput();
+          setTimeout(focusInput, 0);
+          setTimeout(focusInput, 100);
+        }
+      }
+    } else {
+      // User chose to send original message (admin override)
+      setNewMessage('');
+      setIsSending(true);
+      
+      try {
+        // Check spam protection
+        const spamCheck = firebaseService.checkSpam(username);
+        if (!spamCheck.allowed) {
+          setSpamError(spamCheck.reason);
+          setIsSending(false);
+          return;
+        }
+
+        // Create optimistic message
+        const optimisticMessage = {
+          id: `temp_${Date.now()}`,
+          username,
+          message: messageToSend,
+          timestamp: new Date(),
+          isOptimistic: true,
+          replyTo: replyingTo ? {
+            id: replyingTo.id,
+            username: replyingTo.username,
+            message: replyingTo.message
+          } : null
+        };
+
+        // Add to local state immediately
+        setMessages(prev => [...prev, optimisticMessage]);
+
+        // Send to Firebase
+        await firebaseService.sendPublicMessage(username, messageToSend, replyingTo ? {
+          id: replyingTo.id,
+          username: replyingTo.username,
+          message: replyingTo.message
+        } : null);
+
+        // Remove optimistic message and let Firebase update handle the real message
+        setMessages(prev => prev.filter(msg => !msg.isOptimistic));
+        
+        // Clear reply state AFTER successful send
+        setReplyingTo(null);
+      } catch (error) {
+        console.error('Error sending original message:', error);
+        setSpamError(error.message);
+        
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(msg => !msg.isOptimistic));
+      } finally {
+        setIsSending(false);
+        if (isDesktop) {
+          focusInput();
+          setTimeout(focusInput, 0);
+          setTimeout(focusInput, 100);
+        }
+      }
+    }
+  };
+
+  const closeContentModeration = () => {
+    setShowContentModeration(false);
+    setModerationMessage('');
+  };
+
   const formatTime = (timestamp) => {
     if (!timestamp) return '';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -210,7 +348,14 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
 
   return (
     <div className="flex flex-col h-full bg-gray-900/50 relative">
-
+      {/* Content Moderation Modal */}
+      <ContentModeration
+        message={moderationMessage}
+        isVisible={showContentModeration}
+        onClose={closeContentModeration}
+        onSend={handleModeratedSend}
+        showWarning={true}
+      />
 
       {/* Messages Container with WhatsApp-style layout - Scrollable */}
       <div className="flex-1 overflow-y-auto p-2 lg:p-3 space-y-3 flex flex-col min-h-0 pb-4" style={{ paddingBottom: '120px' }}>

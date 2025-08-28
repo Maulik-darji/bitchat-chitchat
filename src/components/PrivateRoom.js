@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import firebaseService from '../lib/firebase';
+import ContentModeration from './ContentModeration';
+import { isMessageClean } from '../lib/contentFilter';
 
 const PrivateRoom = (props) => {
   const { username, onLeaveRoom } = props;
@@ -19,6 +21,8 @@ const PrivateRoom = (props) => {
   const wasMemberRef = useRef(null);
   const inputRef = useRef(null);
   const [isMembersOpen, setIsMembersOpen] = useState(false);
+  const [showContentModeration, setShowContentModeration] = useState(false);
+  const [moderationMessage, setModerationMessage] = useState('');
   const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
   const focusInput = () => {
     if (!isDesktop) return;
@@ -157,6 +161,14 @@ const PrivateRoom = (props) => {
     if (!newMessage.trim() || isSending) return;
 
     const messageText = newMessage.trim();
+    
+    // Check content moderation
+    if (!isMessageClean(messageText)) {
+      setModerationMessage(messageText);
+      setShowContentModeration(true);
+      return;
+    }
+    
     setNewMessage('');
     setIsSending(true);
 
@@ -204,6 +216,52 @@ const PrivateRoom = (props) => {
     } catch (error) {
       // Silent fail for privacy
     }
+  };
+
+  const handleModeratedSend = async (messageToSend) => {
+    setShowContentModeration(false);
+    setModerationMessage('');
+    
+    setNewMessage('');
+    setIsSending(true);
+    
+    try {
+      // Create optimistic message (like public chat)
+      const optimisticMessage = {
+        id: `temp_${Date.now()}`,
+        roomId: room.roomId,
+        username,
+        message: messageToSend,
+        timestamp: new Date(),
+        isOptimistic: true
+      };
+
+      // Add to local state immediately (like public chat)
+      setMessages(prev => [...prev, optimisticMessage]);
+
+      // Send to Firebase
+      await firebaseService.sendRoomMessage(room.roomId, username, messageToSend);
+
+      // Remove optimistic message and let Firebase update handle the real message
+      setMessages(prev => prev.filter(msg => !msg.isOptimistic));
+      
+    } catch (error) {
+      console.error('Error sending moderated message:', error);
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(msg => !msg.isOptimistic));
+    } finally {
+      setIsSending(false);
+      if (isDesktop) {
+        focusInput();
+        setTimeout(focusInput, 0);
+        setTimeout(focusInput, 100);
+      }
+    }
+  };
+
+  const closeContentModeration = () => {
+    setShowContentModeration(false);
+    setModerationMessage('');
   };
 
   const handleRemoveUser = async (userId, usernameToRemove) => {
@@ -257,6 +315,15 @@ const PrivateRoom = (props) => {
 
   return (
     <div className="flex h-[100dvh] lg:h-full bg-gray-900/50">
+      {/* Content Moderation Modal */}
+      <ContentModeration
+        message={moderationMessage}
+        isVisible={showContentModeration}
+        onClose={closeContentModeration}
+        onSend={handleModeratedSend}
+        showWarning={true}
+      />
+      
       {/* Users Sidebar - Desktop */}
       <div className="hidden lg:flex w-64 bg-gray-800/60 backdrop-blur-sm border-r border-gray-700/50 flex-col flex-shrink-0">
         {/* Room Header */}

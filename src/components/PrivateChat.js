@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import firebaseService from '../lib/firebase';
 import MessageActions from './MessageActions';
+import ContentModeration from './ContentModeration';
+import { isMessageClean } from '../lib/contentFilter';
 
 const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, hideHeader = false }) => {
   const [messages, setMessages] = useState([]);
@@ -11,6 +13,8 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
   const [editText, setEditText] = useState('');
   const [hoveredMessageId, setHoveredMessageId] = useState(null);
   const [longPressedMessageId, setLongPressedMessageId] = useState(null);
+  const [showContentModeration, setShowContentModeration] = useState(false);
+  const [moderationMessage, setModerationMessage] = useState('');
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
@@ -94,6 +98,14 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
     if (!newMessage.trim() || isSending) return;
 
     const messageText = newMessage.trim();
+    
+    // Check content moderation
+    if (!isMessageClean(messageText)) {
+      setModerationMessage(messageText);
+      setShowContentModeration(true);
+      return;
+    }
+    
     setNewMessage('');
     setIsSending(true);
 
@@ -171,6 +183,61 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
     }
   };
 
+  const handleModeratedSend = async (messageToSend) => {
+    setShowContentModeration(false);
+    setModerationMessage('');
+    
+    setNewMessage('');
+    setIsSending(true);
+    
+    try {
+      // Create optimistic message
+      const optimisticMessage = {
+        id: `temp_${Date.now()}`,
+        chatId,
+        username,
+        message: messageToSend,
+        timestamp: new Date(),
+        isOptimistic: true,
+        replyTo: replyingTo ? {
+          id: replyingTo.id,
+          username: replyingTo.username,
+          message: replyingTo.message
+        } : null
+      };
+
+      // Add optimistic message to UI
+      setMessages(prev => [...prev, optimisticMessage]);
+
+      // Send message to Firebase
+      await firebaseService.sendPrivateMessage(chatId, username, messageToSend, replyingTo ? {
+        id: replyingTo.id,
+        username: replyingTo.username,
+        message: replyingTo.message
+      } : null);
+
+      // Clear reply state
+      setReplyingTo(null);
+      
+    } catch (error) {
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(msg => !msg.isOptimistic));
+      console.error('Error sending moderated message:', error);
+    } finally {
+      setIsSending(false);
+      if (isDesktop) {
+        focusInput();
+        setTimeout(focusInput, 0);
+        setTimeout(focusInput, 100);
+      }
+    }
+  };
+
+  const closeContentModeration = () => {
+    setShowContentModeration(false);
+    setModerationMessage('');
+  };
+
   const cancelReply = () => {
     setReplyingTo(null);
   };
@@ -185,6 +252,15 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
 
   return (
     <div className="flex h-full bg-gray-900/50">
+      {/* Content Moderation Modal */}
+      <ContentModeration
+        message={moderationMessage}
+        isVisible={showContentModeration}
+        onClose={closeContentModeration}
+        onSend={handleModeratedSend}
+        showWarning={true}
+      />
+      
       {/* Chat Area */}
       <div className="flex-1 flex flex-col min-h-0">
         {/* Scroll container holds sticky header + messages so header sticks while scrolling */}

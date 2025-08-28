@@ -30,6 +30,18 @@
     ],
     "rewrites": [
       {
+        "source": "/sitemap.xml",
+        "destination": "/sitemap.xml"
+      },
+      {
+        "source": "/robots.txt",
+        "destination": "/robots.txt"
+      },
+      {
+        "source": "/google75c41f31bfd1c749.html",
+        "destination": "/google75c41f31bfd1c749.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
