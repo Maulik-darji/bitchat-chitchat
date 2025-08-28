@@ -25,16 +25,29 @@ import {
 } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 
-// Firebase configuration - Project credentials
+// Firebase configuration - read from environment variables
 const firebaseConfig = {
-  apiKey: "AIzaSyAKjAAHMPsHR65B-tNT9FzfsfLJ-OwrdkI",
-  authDomain: "fluid-cosmos-469510-q8.firebaseapp.com",
-  projectId: "fluid-cosmos-469510-q8",
-  storageBucket: "fluid-cosmos-469510-q8.firebasestorage.app",
-  messagingSenderId: "86564786373",
-  appId: "1:86564786373:web:d71885afea20c0ac08e0ac",
-  measurementId: "G-QETQ5QT99M"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID,
+  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
 };
+
+// Basic runtime validation to help during local dev
+const missingFirebaseKeys = Object.entries(firebaseConfig)
+  .filter(([, value]) => !value)
+  .map(([key]) => key);
+if (missingFirebaseKeys.length) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    'Missing Firebase env vars for:',
+    missingFirebaseKeys.join(', '),
+    '\nMake sure to define them in a .env file prefixed with REACT_APP_'
+  );
+}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);

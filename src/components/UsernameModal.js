@@ -15,6 +15,17 @@ const UsernameModal = ({ onUsernameSet }) => {
     };
   }, []);
 
+  // Reset errors and any stuck flags when user edits the input
+  useEffect(() => {
+    if (username) {
+      setError('');
+      setSuggestions([]);
+      // Safety: ensure flags are released if previous attempt got stuck on some devices
+      isSubmittingRef.current = false;
+      setIsChecking(false);
+    }
+  }, [username]);
+
   const generateSuggestions = (baseUsername) => {
     const suggestions = [];
     for (let i = 1; i <= 5; i++) {
