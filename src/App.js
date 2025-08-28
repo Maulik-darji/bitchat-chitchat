@@ -413,9 +413,9 @@ function App() {
         <div className="flex-1 h-full overflow-hidden">
           {currentView === 'home' && (
             <div className="h-full flex flex-col">
-              {/* Fixed header to avoid keyboard scroll push on mobile */}
+              {/* Fixed header that stays visible even when mobile keyboard appears */}
               <div
-                className="fixed top-0 z-50 bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4"
+                className="fixed top-0 bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4 z-50"
                 style={{
                   left: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${sidebarWidth}px` : '0px',
                   right: typeof window !== 'undefined' && window.innerWidth >= 1280 ? '320px' : '0px'
@@ -449,8 +449,8 @@ function App() {
                   </button>
                 </div>
               </div>
-              {/* Scroll area offset by header height */}
-              <div className="flex-1 overflow-y-auto pt-16">
+              {/* Scrollable messages area with top padding to account for fixed header */}
+              <div className="flex-1 overflow-y-auto min-h-0 pt-20">
                 <PublicChat username={username} sidebarWidth={sidebarWidth} />
               </div>
             </div>

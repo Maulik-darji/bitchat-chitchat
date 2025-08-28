@@ -181,7 +181,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
 
 
       {/* Messages Container with WhatsApp-style layout - Scrollable */}
-      <div className="flex-1 overflow-y-auto p-2 lg:p-3 space-y-3 flex flex-col min-h-0 pb-4" style={{ paddingBottom: '200px' }}>
+      <div className="flex-1 overflow-y-auto p-2 lg:p-3 space-y-3 flex flex-col min-h-0 pb-4" style={{ paddingBottom: '120px' }}>
         {messages.length === 0 ? (
           <div className="text-center text-gray-400/70 py-12">
             <div className="w-16 h-16 bg-gray-800/50 border border-gray-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
