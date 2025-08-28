@@ -25,15 +25,23 @@ import {
 } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 
-// Firebase configuration - read from environment variables
+// Firebase configuration - prefer env vars; fall back to dev values locally
+const isDev = process.env.NODE_ENV === 'development';
+
+// Helper to read and trim env vars to avoid invisible spaces breaking prod
+const readEnv = (key) => {
+  const v = process.env[key];
+  return typeof v === 'string' ? v.trim() : v;
+};
+
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.REACT_APP_FIREBASE_APP_ID,
-  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
+  apiKey: readEnv('REACT_APP_FIREBASE_API_KEY') || (isDev ? 'AIzaSyAKjAAHMPsHR65B-tNT9FzfsfLJ-OwrdkI' : undefined),
+  authDomain: readEnv('REACT_APP_FIREBASE_AUTH_DOMAIN') || (isDev ? 'fluid-cosmos-469510-q8.firebaseapp.com' : undefined),
+  projectId: readEnv('REACT_APP_FIREBASE_PROJECT_ID') || (isDev ? 'fluid-cosmos-469510-q8' : undefined),
+  storageBucket: readEnv('REACT_APP_FIREBASE_STORAGE_BUCKET') || (isDev ? 'fluid-cosmos-469510-q8.firebasestorage.app' : undefined),
+  messagingSenderId: readEnv('REACT_APP_FIREBASE_MESSAGING_SENDER_ID') || (isDev ? '86564786373' : undefined),
+  appId: readEnv('REACT_APP_FIREBASE_APP_ID') || (isDev ? '1:86564786373:web:d71885afea20c0ac08e0ac' : undefined),
+  measurementId: readEnv('REACT_APP_FIREBASE_MEASUREMENT_ID') || (isDev ? 'G-QETQ5QT99M' : undefined)
 };
 
 // Basic runtime validation to help during local dev

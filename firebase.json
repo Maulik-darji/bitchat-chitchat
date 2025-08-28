@@ -17,6 +17,7 @@
     }
   ],
   "hosting": {
+    "site": "fluid-cosmos-469510-q8",
     "public": "build",
     "ignore": [
       "firebase.json",

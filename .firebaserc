@@ -1,5 +1,7 @@
 {
   "projects": {
     "default": "fluid-cosmos-469510-q8"
-  }
+  },
+  "targets": {},
+  "etags": {}
 }
