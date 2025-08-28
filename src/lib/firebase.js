@@ -410,6 +410,7 @@ class FirebaseService {
         username,
         message,
         timestamp: serverTimestamp(),
+        status: 'sent', // Initial status
         replyTo: replyTo ? {
           id: replyTo.id,
           username: replyTo.username,
@@ -465,7 +466,8 @@ class FirebaseService {
         uid: current.uid, // CRITICAL: Link to Auth UID
         username,
         message,
-        timestamp: serverTimestamp()
+        timestamp: serverTimestamp(),
+        status: 'sent' // Initial status
       };
       
       console.log('Attempting to send room message with data:', messageData);
@@ -490,7 +492,8 @@ class FirebaseService {
               uid: retryCurrent.uid,
               username,
               message,
-              timestamp: serverTimestamp()
+              timestamp: serverTimestamp(),
+              status: 'sent'
             });
             return messageRef.id;
           }
@@ -960,6 +963,14 @@ class FirebaseService {
         await updateDoc(roomRef, {
           members: [...roomData.members, username]
         });
+        
+        // Create notification for room creator
+        try {
+          const { createRoomJoinNotification } = await import('./notifications');
+          await createRoomJoinNotification(roomCode, roomData.name, username, roomData.createdBy);
+        } catch (error) {
+          console.error('Error creating room join notification:', error);
+        }
       }
       
       return { id: roomCode, ...roomData };
@@ -1153,6 +1164,9 @@ class FirebaseService {
         createdAt: serverTimestamp()
       });
 
+      // Note: Private chat invites don't need room notifications
+      // They are handled differently from room invites
+
       return inviteRef.id;
     } catch (error) {
       console.error('Error sending invite:', error);
@@ -1204,6 +1218,9 @@ class FirebaseService {
         const inviteDoc = await getDoc(inviteRef);
         const inviteData = inviteDoc.data();
         await this.createPrivateChat(inviteData.fromUsername, inviteData.toUsername);
+        
+        // Note: Private chat invite acceptances don't need room notifications
+        // They are handled differently from room invites
       }
 
       return true;
@@ -1314,6 +1331,7 @@ class FirebaseService {
         username,
         message,
         timestamp: serverTimestamp(),
+        status: 'sent', // Initial status
         replyTo: replyTo ? {
           id: replyTo.id,
           username: replyTo.username,
@@ -1329,9 +1347,72 @@ class FirebaseService {
         lastMessageAt: serverTimestamp()
       });
 
+      // Get chat participants to determine recipient
+      const chatDoc = await getDoc(chatRef);
+      if (chatDoc.exists()) {
+        const chatData = chatDoc.data();
+        const participants = chatData.participants || [];
+        const recipientUsername = participants.find(p => p !== username);
+        
+        if (recipientUsername) {
+          // Create notification for message received
+          try {
+            const { createMessageReceivedNotification } = await import('./notifications');
+            await createMessageReceivedNotification(chatId, username, recipientUsername, message);
+          } catch (error) {
+            console.error('Error creating message notification:', error);
+          }
+        }
+      }
+
       return messageRef.id;
     } catch (error) {
       console.error('Error sending private message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark private message as read
+   */
+  async markPrivateMessageAsRead(messageId) {
+    try {
+      const messageRef = doc(db, COLLECTIONS.PRIVATE_MESSAGES, messageId);
+      await updateDoc(messageRef, {
+        status: 'read',
+        readAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error marking message as read:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark all messages in a chat as read for a user
+   */
+  async markAllPrivateMessagesAsRead(chatId, username) {
+    try {
+      const q = query(
+        collection(db, COLLECTIONS.PRIVATE_MESSAGES),
+        where('chatId', '==', chatId),
+        where('username', '!=', username), // Only mark other users' messages as read
+        where('status', 'in', ['sent', 'delivered'])
+      );
+      
+      const snapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      
+      snapshot.forEach((doc) => {
+        batch.update(doc.ref, {
+          status: 'read',
+          readAt: serverTimestamp()
+        });
+      });
+      
+      await batch.commit();
+    } catch (error) {
+      console.error('Error marking all messages as read:', error);
       throw error;
     }
   }

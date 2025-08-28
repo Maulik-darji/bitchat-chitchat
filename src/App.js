@@ -10,6 +10,7 @@ import PrivateRoom from './components/PrivateRoom';
 import PrivateChat from './components/PrivateChat';
 import firebaseService from './lib/firebase';
 import RemovalNotification from './components/RemovalNotification';
+import NotificationBell from './components/NotificationBell';
 
 function App() {
   const [username, setUsername] = useState(null);
@@ -442,19 +443,23 @@ function App() {
                     </button>
                     <h1 className="text-2xl font-bold text-white text-left">Public Chat</h1>
                   </div>
-                  <button
-                    onClick={() => {
-                      // Trigger refresh in PublicChat component
-                      const event = new CustomEvent('refreshPublicChat');
-                      window.dispatchEvent(event);
-                    }}
-                    className="p-2 bg-gray-700/50 hover:bg-gray-600/50 disabled:bg-gray-600/20 rounded-lg border border-gray-600/50 hover:border-gray-500/50 disabled:border-gray-500/30 transition-all duration-200"
-                    title="Refresh messages"
-                  >
-                    <svg className="w-5 h-5 text-gray-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  </button>
+                  <div className="flex items-center space-x-3">
+                    {/* Notification Bell */}
+                    <NotificationBell username={username} />
+                    <button
+                      onClick={() => {
+                        // Trigger refresh in PublicChat component
+                        const event = new CustomEvent('refreshPublicChat');
+                        window.dispatchEvent(event);
+                      }}
+                      className="p-2 bg-gray-700/50 hover:bg-gray-600/50 disabled:bg-gray-600/20 rounded-lg border border-gray-600/50 hover:border-gray-500/50 disabled:border-gray-500/30 transition-all duration-200"
+                      title="Refresh messages"
+                    >
+                      <svg className="w-5 h-5 text-gray-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
               {/* Scrollable messages area with top padding to account for fixed header */}
@@ -487,14 +492,18 @@ function App() {
                     </button>
                     <h1 className="text-2xl font-bold text-white">Private Room: {currentRoom.name}</h1>
                   </div>
-                  <button
-                    onClick={() => setCurrentView('home')}
-                    className="text-gray-400 hover:text-white transition-colors"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                  <div className="flex items-center space-x-3">
+                    {/* Notification Bell */}
+                    <NotificationBell username={username} />
+                    <button
+                      onClick={() => setCurrentView('home')}
+                      className="text-gray-400 hover:text-white transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
               {/* Scroll area offset by header height */}

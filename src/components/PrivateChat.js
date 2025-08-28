@@ -3,6 +3,7 @@ import firebaseService from '../lib/firebase';
 import MessageActions from './MessageActions';
 import ContentModeration from './ContentModeration';
 import { isMessageClean } from '../lib/contentFilter';
+import MessageStatus from './MessageStatus';
 
 const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, hideHeader = false }) => {
   const [messages, setMessages] = useState([]);
@@ -15,6 +16,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
   const [longPressedMessageId, setLongPressedMessageId] = useState(null);
   const [showContentModeration, setShowContentModeration] = useState(false);
   const [moderationMessage, setModerationMessage] = useState('');
+  const [copiedMessageId, setCopiedMessageId] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
@@ -32,9 +34,9 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  useEffect(() => {
+    useEffect(() => {
     if (!chatId) return;
-    
+
     let unsubscribe = () => {};
 
     const setupListener = async () => {
@@ -63,6 +65,15 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
             
             return filteredMessages;
           });
+          
+          // Mark messages as read when chat is opened
+          if (messageList.length > 0) {
+            try {
+              firebaseService.markAllPrivateMessagesAsRead(chatId, username);
+            } catch (error) {
+              console.error('Error marking messages as read:', error);
+            }
+          }
         });
       } catch (error) {
         console.error('Error setting up private chat messages listener:', error);
@@ -78,7 +89,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
         console.error('Error cleaning up private chat messages listener:', error);
       }
     };
-  }, [chatId]);
+  }, [chatId, username]);
 
   useEffect(() => {
     scrollToBottom();
@@ -236,6 +247,30 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
   const closeContentModeration = () => {
     setShowContentModeration(false);
     setModerationMessage('');
+  };
+
+  const handleCopyText = async (text, messageId) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      console.log('Text copied to clipboard');
+      
+      // Show copied state
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000); // Reset after 2 seconds
+    } catch (error) {
+      console.error('Failed to copy text:', error);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      
+      // Show copied state even for fallback
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    }
   };
 
   const cancelReply = () => {
@@ -408,15 +443,17 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                           {message.message}
                         </p>
                         
-                        {/* Timestamp inside message bubble */}
-                        <div className={`flex items-center justify-end space-x-2 ${isCurrentUser(message.username) ? 'text-purple-200/70' : 'text-gray-400/70'}`}>
-                          <span className="text-xs">
-                            {formatTime(message.timestamp)}
-                          </span>
-                          {message.edited && (
-                            <span className="text-xs bg-gray-700/30 px-1 py-0.5 rounded text-xs">edited</span>
-                          )}
-                        </div>
+                                                 {/* Message status and timestamp */}
+                         <div className={`flex items-center justify-end space-x-2 ${isCurrentUser(message.username) ? 'text-purple-200/70' : 'text-gray-400/70'}`}>
+                           <MessageStatus 
+                             status={message.status || 'sent'} 
+                             timestamp={message.timestamp}
+                             isCurrentUser={isCurrentUser(message.username)}
+                           />
+                           {message.edited && (
+                             <span className="text-xs bg-gray-700/30 px-1 py-0.5 rounded text-xs">edited</span>
+                           )}
+                         </div>
                       </div>
                       
                       {/* Message Actions - CSS hover based */}
@@ -438,6 +475,17 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
                               </svg>
                               <span>Reply</span>
+                            </button>
+
+                            {/* Copy Text Button */}
+                            <button
+                              onClick={() => handleCopyText(message.message, message.id)}
+                              className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-md transition-colors duration-150"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 002 2v8a2 2 0 002 2z" />
+                              </svg>
+                              <span>{copiedMessageId === message.id ? 'Copied!' : 'Copy Text'}</span>
                             </button>
 
                             {/* Edit Button - Only show for current user's messages */}

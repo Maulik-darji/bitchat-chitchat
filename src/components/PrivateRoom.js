@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import firebaseService from '../lib/firebase';
 import ContentModeration from './ContentModeration';
 import { isMessageClean } from '../lib/contentFilter';
+import MessageStatus from './MessageStatus';
 
 const PrivateRoom = (props) => {
   const { username, onLeaveRoom } = props;
@@ -313,6 +314,22 @@ const PrivateRoom = (props) => {
 
   const isCurrentUser = (messageUsername) => messageUsername === username;
 
+  const handleCopyText = async (text, messageId) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setCopiedMessageId(messageId); // Set the message ID that was copied
+      setTimeout(() => {
+        setCopied(false);
+        setCopiedMessageId(null); // Reset copied message ID
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to copy text:', error);
+    }
+  };
+
+  const [copiedMessageId, setCopiedMessageId] = useState(null);
+
   return (
     <div className="flex h-[100dvh] lg:h-full bg-gray-900/50">
       {/* Content Moderation Modal */}
@@ -463,16 +480,29 @@ const PrivateRoom = (props) => {
                           {message.message}
                         </p>
                         
-                        {/* Timestamp inside message bubble */}
+                        {/* Message status and timestamp */}
                         <div className={`flex items-center justify-end ${isCurrentUser(message.username) ? 'text-green-200/70' : 'text-gray-400/70'}`}>
-                          <span className="text-xs">
-                            {formatTime(message.timestamp)}
-                          </span>
+                          <MessageStatus 
+                            status={message.status || 'sent'} 
+                            timestamp={message.timestamp}
+                            isCurrentUser={isCurrentUser(message.username)}
+                          />
                         </div>
                         
-                        {/* Edit button for current user's messages */}
+                        {/* Action buttons for current user's messages */}
                         {isCurrentUser(message.username) && (
-                          <div className="absolute -top-2 -left-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                          <div className="absolute -top-2 -left-2 opacity-0 group-hover:opacity-100 transition-all duration-200 flex space-x-1">
+                            {/* Copy button */}
+                            <button
+                              onClick={() => handleCopyText(message.message, message.id)}
+                              className="bg-gray-700/80 hover:bg-gray-600/80 text-gray-300 hover:text-white p-2 rounded-full border border-gray-600/50 hover:border-gray-500/50 transition-all duration-200 shadow-lg"
+                              title={copiedMessageId === message.id ? 'Copied!' : 'Copy text'}
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            </button>
+                            {/* Edit button */}
                             <button
                               onClick={() => {
                                 setEditingMessage(message.id);
