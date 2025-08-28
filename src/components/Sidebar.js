@@ -104,6 +104,14 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
         sidebarWidth < 280 ? 'p-3' : sidebarWidth < 320 ? 'p-3.5' : 'p-4 lg:p-6'
       }`}>
         <div className="flex items-center justify-center mb-2 relative">
+          {/* Logo */}
+          <img 
+            src="/android-chrome-512x512.png" 
+            alt="Basicaly Logo" 
+            className={`${
+              sidebarWidth < 280 ? 'w-8 h-8' : sidebarWidth < 320 ? 'w-10 h-10' : 'w-12 h-12 lg:w-16 lg:h-16'
+            } mr-2 rounded-full`}
+          />
           <h1 className={`font-extrabold text-white/95 tracking-tight ${
             sidebarWidth < 280 ? 'text-xl' : sidebarWidth < 320 ? 'text-2xl' : 'text-2xl lg:text-3xl'
           }`}>Basicaly</h1>

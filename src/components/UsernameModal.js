@@ -106,7 +106,7 @@ const UsernameModal = ({ onUsernameSet }) => {
     <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="glass rounded-lg p-6 lg:p-8 w-full max-w-md mx-auto">
         <div className="text-center mb-6">
-          <h1 className="text-2xl lg:text-3xl font-bold text-white mb-2">Welcome to Anonymous Chat</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold text-white mb-2">Welcome to Basicaly Chat</h1>
           <p className="text-gray-300 text-sm lg:text-base">Choose your username to get started</p>
         </div>
         
