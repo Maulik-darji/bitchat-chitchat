@@ -17,5 +17,5 @@ jobs:
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AEROBIC_COPILOT_449112_S6 }}
-          projectId: aerobic-copilot-449112-s6
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FLUID_COSMOS_469510_Q8 }}
+          projectId: fluid-cosmos-469510-q8

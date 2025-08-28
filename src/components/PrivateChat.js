@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import firebaseService from '../lib/firebase';
+import MessageActions from './MessageActions';
 
 const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, hideHeader = false }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [editingMessage, setEditingMessage] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [hoveredMessageId, setHoveredMessageId] = useState(null);
+  const [longPressedMessageId, setLongPressedMessageId] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
@@ -99,17 +105,26 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
         username,
         message: messageText,
         timestamp: new Date(),
-        isOptimistic: true
+        isOptimistic: true,
+        replyTo: replyingTo ? {
+          id: replyingTo.id,
+          username: replyingTo.username,
+          message: replyingTo.message
+        } : null
       };
 
-      // Add message to UI immediately
+      // Add optimistic message to UI
       setMessages(prev => [...prev, optimisticMessage]);
-      
-      // Send to Firebase
-      await firebaseService.sendPrivateMessage(chatId, username, messageText);
-      
-      // Don't remove optimistic message immediately - let the Firebase listener handle it
-      // The listener will replace the optimistic message with the real one when it arrives
+
+      // Send message to Firebase
+      await firebaseService.sendPrivateMessage(chatId, username, messageText, replyingTo ? {
+        id: replyingTo.id,
+        username: replyingTo.username,
+        message: replyingTo.message
+      } : null);
+
+      // Clear reply state
+      setReplyingTo(null);
       
     } catch (error) {
       // Remove optimistic message on error
@@ -125,7 +140,40 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
     }
   };
 
+  const handleReply = (message) => {
+    setReplyingTo(message);
+    // Clear long-press state for this message
+    setLongPressedMessageId(null);
+    inputRef.current?.focus();
+  };
 
+  const handleUnsend = async (messageId) => {
+    try {
+      await firebaseService.deletePrivateMessage(messageId);
+      console.log('Message unsent successfully');
+      // Clear long-press state for this message
+      setLongPressedMessageId(null);
+    } catch (error) {
+      console.error('Error unsending message:', error);
+      alert('Failed to unsend message: ' + error.message);
+    }
+  };
+
+  const handleEditMessage = async (messageId, newText) => {
+    if (!newText.trim()) return;
+
+    try {
+      await firebaseService.editPrivateMessage(messageId, newText.trim());
+      setEditingMessage(null);
+      setEditText('');
+    } catch (error) {
+      console.error('Error editing message:', error);
+    }
+  };
+
+  const cancelReply = () => {
+    setReplyingTo(null);
+  };
 
   const formatTime = (timestamp) => {
     if (!timestamp) return '';
@@ -211,6 +259,49 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
             <>
               {messages.map((message) => (
                 <div key={message.id} className={`flex ${isCurrentUser(message.username) ? 'justify-end' : 'justify-start'}`}>
+                  {editingMessage === message.id ? (
+                    <div className="max-w-xs lg:max-w-md relative z-[9998]">
+                      <div className="bg-gray-800/40 backdrop-blur-sm rounded-lg p-4 border border-gray-700/30">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-gray-400/90 font-medium text-sm">
+                                {message.username}
+                              </span>
+                              <span className="text-gray-500/70 text-xs">
+                                {formatTime(message.timestamp)}
+                              </span>
+                            </div>
+                            <span className="text-yellow-400/80 text-xs font-medium">Editing...</span>
+                          </div>
+                          <textarea
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            className="w-full bg-gray-700/50 border border-gray-600/50 rounded-lg p-3 text-white/90 resize-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
+                            rows="3"
+                            autoFocus
+                          />
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => handleEditMessage(message.id, editText)}
+                              className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 hover:text-purple-300 px-4 py-2 rounded-lg text-sm transition-all duration-200 border border-purple-500/30 hover:border-purple-500/50"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingMessage(null);
+                                setEditText('');
+                              }}
+                              className="bg-gray-600/20 hover:bg-gray-600/30 text-gray-400 hover:text-gray-300 px-4 py-2 rounded-lg text-sm transition-all duration-200 border border-gray-500/30 hover:border-gray-500/50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
                   <div className={`max-w-xs lg:max-w-md ${isCurrentUser(message.username) ? 'text-right' : 'text-left'}`}>
                     {/* Message bubble */}
                     <div className={`relative group ${isCurrentUser(message.username) ? 'ml-auto' : 'mr-auto'}`}>
@@ -221,6 +312,22 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                         } 
                         backdrop-blur-sm rounded-2xl px-2.5 py-1.5 border break-words inline-block
                       `}>
+                        {/* Reply indicator */}
+                        {replyingTo && replyingTo.id === message.id && (
+                          <div className="mb-2 p-2 bg-gray-700/30 rounded-lg border-l-4 border-purple-500">
+                            <p className="text-xs text-gray-400">Replying to:</p>
+                            <p className="text-sm text-gray-300">{message.message}</p>
+                          </div>
+                        )}
+                        
+                        {/* Reply to message indicator */}
+                        {message.replyTo && (
+                          <div className="mb-2 p-2 bg-gray-700/30 rounded-lg border-l-4 border-purple-500">
+                            <p className="text-xs text-gray-400">Replying to {message.replyTo.username}:</p>
+                            <p className="text-sm text-gray-300">{message.replyTo.message}</p>
+                          </div>
+                        )}
+                        
                         <p className="text-sm leading-relaxed mb-1">
                           {message.message}
                         </p>
@@ -230,14 +337,69 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                           <span className="text-xs">
                             {formatTime(message.timestamp)}
                           </span>
+                          {message.edited && (
+                            <span className="text-xs bg-gray-700/30 px-1 py-0.5 rounded text-xs">edited</span>
+                          )}
                         </div>
-                        
+                      </div>
+                      
+                      {/* Message Actions - CSS hover based */}
+                      <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none group-hover:pointer-events-auto" 
+                           style={{
+                             top: '-8px',
+                             left: isCurrentUser(message.username) ? 'auto' : '-8px',
+                             right: isCurrentUser(message.username) ? '-8px' : 'auto',
+                             zIndex: 99999
+                           }}>
+                        <div className="bg-gray-800/95 backdrop-blur-sm border border-gray-600/50 rounded-lg shadow-2xl p-2" style={{ minWidth: '120px' }}>
+                          <div className="flex flex-col space-y-1">
+                            {/* Reply Button */}
+                            <button
+                              onClick={() => handleReply(message)}
+                              className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-md transition-colors duration-150"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                              </svg>
+                              <span>Reply</span>
+                            </button>
 
+                            {/* Edit Button - Only show for current user's messages */}
+                            {isCurrentUser(message.username) && (
+                              <button
+                                onClick={() => {
+                                  setEditingMessage(message.id);
+                                  setEditText(message.message);
+                                }}
+                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-md transition-colors duration-150"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                                <span>Edit</span>
+                              </button>
+                            )}
+
+                            {/* Unsend Button - Only show for current user's messages */}
+                            {isCurrentUser(message.username) && (
+                              <button
+                                onClick={() => handleUnsend(message.id)}
+                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-600/20 rounded-md transition-colors duration-150"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                                <span>Unsend</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )}
+              </div>
+            ))}
               <div ref={messagesEndRef} />
             </>
           )}
@@ -246,6 +408,26 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
 
         {/* Message Input */}
         <div className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0" onClick={() => { if (isDesktop) inputRef.current?.focus(); }}>
+          {/* Reply indicator */}
+          {replyingTo && (
+            <div className="mb-3 p-3 bg-gray-700/30 rounded-lg border-l-4 border-purple-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-400">Replying to {replyingTo.username}:</p>
+                  <p className="text-sm text-gray-300">{replyingTo.message}</p>
+                </div>
+                <button
+                  onClick={cancelReply}
+                  className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-gray-600/20 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+          
           <form onSubmit={handleSendMessage} className="flex space-x-3">
             <input
               type="text"
@@ -256,7 +438,10 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
               disabled={isSending}
               ref={inputRef}
               autoFocus={isDesktop}
-              onBlur={() => { if (isDesktop) setTimeout(focusInput, 0); }}
+              onBlur={() => { 
+                // Only re-focus on desktop if we're not editing a message
+                if (isDesktop && !editingMessage) setTimeout(focusInput, 0); 
+              }}
             />
             <button
               type="submit"

@@ -16,6 +16,10 @@
       ]
     }
   ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
   "hosting": {
     "site": "fluid-cosmos-469510-q8",
     "public": "build",

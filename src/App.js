@@ -9,6 +9,7 @@ import CreateRoom from './components/CreateRoom';
 import PrivateRoom from './components/PrivateRoom';
 import PrivateChat from './components/PrivateChat';
 import firebaseService from './lib/firebase';
+import RemovalNotification from './components/RemovalNotification';
 
 function App() {
   const [username, setUsername] = useState(null);
@@ -114,8 +115,13 @@ function App() {
     }
   };
 
-  // Debug function - can be called from browser console
+  // Debug functions - only available in development
   const debugUsernameIssue = async (testUsername) => {
+    if (process.env.NODE_ENV !== 'development') {
+      console.warn('Debug functions are only available in development mode');
+      return;
+    }
+    
     console.log('=== DEBUGGING USERNAME ISSUE ===');
     console.log('Test username:', testUsername);
     
@@ -154,6 +160,11 @@ function App() {
 
   // Function to clear a specific username that might be causing issues
   const clearUsername = async (usernameToClear) => {
+    if (process.env.NODE_ENV !== 'development') {
+      console.warn('Debug functions are only available in development mode');
+      return;
+    }
+    
     console.log(`=== CLEARING USERNAME: ${usernameToClear} ===`);
     try {
       await firebaseService.forceDeleteUsername(usernameToClear);
@@ -163,16 +174,7 @@ function App() {
     }
   };
 
-  // Make debug functions available globally
-  useEffect(() => {
-    window.debugUsernameIssue = debugUsernameIssue;
-    window.clearUsername = clearUsername;
-    window.listAllUsers = () => firebaseService.listAllAuthAndFirestoreUsers();
-    console.log('Debug functions available:');
-    console.log('- window.debugUsernameIssue(username)');
-    console.log('- window.clearUsername(username)');
-    console.log('- window.listAllUsers()');
-  }, []);
+  // Debug functions removed for production security
 
   const handleLogout = async () => {
     if (!username) return;
@@ -351,9 +353,15 @@ function App() {
     return <UsernameModal onUsernameSet={handleUsernameSet} />;
   }
 
-      return (
-      <div className="App h-screen overflow-hidden">
-        {/* Main Layout */}
+  return (
+    <div className="App h-screen overflow-hidden">
+      {/* Removal Notification Handler - Invisible component that listens for notifications */}
+      <RemovalNotification 
+        currentUser={firebaseService.auth.currentUser} 
+        onUserRemoved={handleUserRemoved}
+      />
+      
+      {/* Main Layout */}
       <div className="flex h-full">
         {/* Left Sidebar - Hidden on small screens */}
         <div 

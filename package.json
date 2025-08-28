@@ -21,8 +21,10 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "build:prod": "env-cmd -f .env.production react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "env:check": "node -e \"console.log('Environment check:'); console.log('NODE_ENV:', process.env.NODE_ENV); console.log('Firebase config loaded:', !!process.env.REACT_APP_FIREBASE_API_KEY);\""
   },
   "eslintConfig": {
     "extends": [

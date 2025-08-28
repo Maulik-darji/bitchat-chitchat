@@ -106,7 +106,7 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
         <div className="flex items-center justify-center mb-2 relative">
           <h1 className={`font-extrabold text-white/95 tracking-tight ${
             sidebarWidth < 280 ? 'text-xl' : sidebarWidth < 320 ? 'text-2xl' : 'text-2xl lg:text-3xl'
-          }`}>Sipher</h1>
+          }`}>Basicaly</h1>
           {/* Close Button - Mobile Only */}
           <button
             onClick={() => onViewChange('home')}
@@ -119,7 +119,7 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
         </div>
         <p className={`text-gray-400/80 font-medium ${
           sidebarWidth < 280 ? 'text-xs' : sidebarWidth < 320 ? 'text-sm' : 'text-sm lg:text-base'
-        }`}>Private & Secure Messaging</p>
+        }`}>Messaging Without Boundaries.</p>
       </div>
 
       {/* Navigation Menu */}

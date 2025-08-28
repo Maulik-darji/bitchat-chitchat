@@ -57,19 +57,32 @@ npm install
 
 ### 3. Configure Firebase (Environment Variables)
 
-Create a local `.env.local` file (git-ignored) with your Firebase credentials:
+**⚠️ SECURITY WARNING: Never commit environment files to version control!**
 
+1. Copy `env.example` to `.env.local`:
+```bash
+cp env.example .env.local
 ```
-REACT_APP_FIREBASE_API_KEY=your_api_key
-REACT_APP_FIREBASE_AUTH_DOMAIN=your_auth_domain
+
+2. Edit `.env.local` with your actual Firebase credentials:
+```bash
+REACT_APP_FIREBASE_API_KEY=your_actual_api_key_here
+REACT_APP_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
 REACT_APP_FIREBASE_PROJECT_ID=your_project_id
-REACT_APP_FIREBASE_STORAGE_BUCKET=your_storage_bucket
-REACT_APP_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+REACT_APP_FIREBASE_STORAGE_BUCKET=your_project_id.firebasestorage.app
+REACT_APP_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
 REACT_APP_FIREBASE_APP_ID=your_app_id
 REACT_APP_FIREBASE_MEASUREMENT_ID=your_measurement_id
 ```
 
-The app reads these in `src/lib/firebase.js`. Do not commit `.env*` files.
+3. **VERIFY** that `.env.local` is in your `.gitignore` file
+4. The app reads these in `src/lib/firebase.js`
+
+**Important**: 
+- ✅ Use `.env.local` for local development
+- ✅ Use `.env.production` for production builds
+- ❌ NEVER commit `.env*` files to git
+- ❌ NEVER share your `.env` files publicly
 
 ### 4. Deploy Cloud Functions
 
@@ -113,6 +126,34 @@ The application uses Firebase Security Rules to ensure:
 - Users can only edit/delete their own messages
 - Private room access is controlled
 - Data integrity is maintained
+
+## Security Best Practices
+
+### Environment Variables
+- ✅ **Use environment variables** for all Firebase configuration
+- ✅ **Never hardcode** API keys or project IDs in source code
+- ✅ **Use .env.local** for local development
+- ✅ **Use .env.production** for production builds
+
+### Firebase Configuration
+- ✅ **Single project** - Use only one Firebase project per app
+- ✅ **Proper rules** - Firestore security rules are your main security layer
+- ✅ **Authentication** - Always require user authentication for data access
+
+### Development vs Production
+- ✅ **Debug functions** are only available in development mode
+- ✅ **Sensitive logging** is disabled in production
+- ✅ **Environment checks** prevent debug code from running in production
+
+### What's Safe to Expose
+- ✅ **Firebase API keys** - These are public identifiers, not secrets
+- ✅ **Project IDs** - These are public project names
+- ✅ **Configuration structure** - The app structure is not sensitive
+
+### What's NOT Safe to Expose
+- ❌ **Service account keys** - Keep these in GitHub Secrets
+- ❌ **Database passwords** - Use Firebase Auth instead
+- ❌ **Internal API endpoints** - Use Firebase Functions with proper auth
 
 ## File Structure
 

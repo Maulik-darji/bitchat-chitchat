@@ -47,12 +47,21 @@ const PrivateChatsList = ({ username, onChatSelect }) => {
       console.warn('Invalid chat data:', chat);
       return null;
     }
-    const otherUser = chat.participants.find(participant => participant !== username);
-    if (!otherUser) {
-      console.warn('Could not find other username in chat:', chat);
+    
+    // Filter out the current user and get the other participant
+    const otherParticipants = chat.participants.filter(participant => participant !== username);
+    
+    if (otherParticipants.length === 0) {
+      console.warn('No other participants found in chat:', chat);
       return null;
     }
-    return otherUser;
+    
+    if (otherParticipants.length > 1) {
+      console.warn('Multiple other participants found in chat (unexpected):', chat);
+      return null;
+    }
+    
+    return otherParticipants[0];
   };
 
   const formatLastMessageTime = (timestamp) => {
@@ -118,13 +127,20 @@ const PrivateChatsList = ({ username, onChatSelect }) => {
         Direct Message (DM)
       </h3>
       <div className="space-y-1">
-        {privateChats.map((chat) => {
+        {privateChats
+          .filter(chat => {
+            // Pre-filter chats to ensure they have valid data
+            if (!chat.participants || !Array.isArray(chat.participants) || chat.participants.length < 2) {
+              return false; // Skip invalid chats
+            }
+            return true;
+          })
+          .map((chat) => {
           const otherUsername = getOtherUsername(chat);
           
           // Skip rendering if we can't get the other username
           if (!otherUsername) {
-            console.warn('Skipping chat due to missing other username:', chat);
-            return null;
+            return null; // This should not happen due to pre-filtering, but safety check
           }
           
           return (
