@@ -2,8 +2,8 @@
 User-agent: *
 Allow: /
 
-# Sitemap location (you'll need to create this later)
-Sitemap: https://your-domain.com/sitemap.xml
+# Sitemap location
+Sitemap: https://basicaly.xyz/sitemap.xml
 
 # Crawl delay (optional)
 Crawl-delay: 1
