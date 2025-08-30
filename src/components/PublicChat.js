@@ -208,7 +208,10 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
       setMessages(prev => prev.filter(msg => !msg.isOptimistic));
     } finally {
       setIsSending(false);
-      // Don't auto-re-focus after sending message
+      // Restore focus to input field after sending message
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 0);
     }
   };
 

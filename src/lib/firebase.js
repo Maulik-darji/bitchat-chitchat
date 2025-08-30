@@ -2120,7 +2120,7 @@ class FirebaseService {
 
   /**
    * Delete current user account and all associated data
-   * This will trigger the Cloud Function to clean up Firestore data
+   * This ensures BOTH Firestore data AND auth account are deleted
    */
   async deleteUserAccount() {
     try {
@@ -2134,8 +2134,7 @@ class FirebaseService {
       // Stop all active listeners before deleting account
       this.stopAllListeners();
       
-      // IMPORTANT: Clean up Firestore data BEFORE deleting the auth account
-      // This ensures we have proper permissions to delete the data
+      // Step 1: Clean up Firestore data FIRST (while we still have permissions)
       try {
         console.log('Starting Firestore data cleanup...');
         
@@ -2164,47 +2163,60 @@ class FirebaseService {
         console.log('Firestore data cleanup completed successfully');
       } catch (cleanupError) {
         console.error('Error during Firestore cleanup:', cleanupError);
-        // Continue with account deletion even if cleanup fails
-        // The data will remain but at least the auth account is removed
+        // Don't continue if cleanup fails - we need to ensure data is gone
+        throw new Error(`Firestore cleanup failed: ${cleanupError.message}`);
       }
       
-      // Try to refresh the token first to handle expiration
+      // Step 2: Ensure we have a valid token for auth deletion
+      let userToDelete = currentUser;
+      
       try {
+        // Refresh the token to ensure it's valid
         await currentUser.getIdToken(true);
+        console.log('Token refreshed successfully');
       } catch (tokenError) {
-        console.log('Token refresh failed, trying to re-authenticate');
-        // Try to re-authenticate anonymously
+        console.log('Token refresh failed, attempting re-authentication...');
+        
+        // Try to re-authenticate to get a fresh token
         try {
           await signInAnonymously(auth);
-          // Get the new user and try to delete
           const newUser = auth.currentUser;
           if (newUser) {
-            await newUser.delete();
-            console.log('User account deleted successfully after re-authentication');
-            this.isInitialized = false;
-            onlineUsers.clear();
-            spamTracker.clear();
-            return;
+            userToDelete = newUser;
+            console.log('Re-authenticated successfully, will delete new user account');
+          } else {
+            throw new Error('Re-authentication failed - no user returned');
           }
         } catch (reauthError) {
-          console.log('Re-authentication failed, proceeding with manual cleanup');
+          console.error('Re-authentication failed:', reauthError);
+          throw new Error('Cannot delete account: authentication failed');
         }
       }
       
-      // Then try to delete the Firebase Authentication user
+      // Step 3: Delete the Firebase Authentication user (CRITICAL STEP)
       try {
-        await currentUser.delete();
-        console.log('User account deleted successfully');
+        console.log('Attempting to delete Firebase Authentication user...');
+        await userToDelete.delete();
+        console.log('✅ Firebase Authentication user deleted successfully');
+        
+        // Step 4: Clean up local state
+        this.isInitialized = false;
+        onlineUsers.clear();
+        spamTracker.clear();
+        
+        console.log('✅ User account completely deleted from both Firestore and Authentication');
+        
       } catch (deleteError) {
-        console.log('Could not delete auth user (token may be expired), but Firestore data was cleaned up');
+        console.error('❌ Failed to delete Firebase Authentication user:', deleteError);
+        
+        // This is a critical failure - the user account still exists
+        throw new Error(`Account deletion failed: ${deleteError.message}. The user account still exists in Firebase Authentication.`);
       }
-      
-      this.isInitialized = false;
-      onlineUsers.clear();
-      spamTracker.clear();
       
     } catch (error) {
       console.error('Error deleting user account:', error);
+      
+      // Re-throw the error so the UI can show what went wrong
       throw error;
     }
   }
