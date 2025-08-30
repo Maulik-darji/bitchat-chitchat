@@ -79,16 +79,50 @@ const clearFirestoreCache = async () => {
 
 // Collection names
 const COLLECTIONS = {
-  USERS: 'users',
-  PUBLIC_CHATS: 'publicChats',
-  ROOM_MESSAGES: 'roomMessages',
-  ROOM_USERS: 'roomUsers',
-  ROOMS: 'rooms',
-  INVITES: 'invites',
-  PRIVATE_CHATS: 'privateChats',
-  PRIVATE_MESSAGES: 'privateMessages',
+  USERS: 'users',
+  PUBLIC_CHATS: 'publicChats',
+  ROOM_MESSAGES: 'roomMessages',
+  ROOM_USERS: 'roomUsers',
+  ROOMS: 'rooms',
+  INVITES: 'invites',
+  PRIVATE_CHATS: 'privateChats',
+  PRIVATE_MESSAGES: 'privateMessages',
   REMOVAL_NOTIFICATIONS: 'removalNotifications'
 };
+
+// Access validation cache for performance optimization
+const ACCESS_CACHE = {
+  rooms: new Map(), // roomId -> { hasAccess: boolean, timestamp: number, username: string }
+  chats: new Map(), // chatId -> { hasAccess: boolean, timestamp: number, username: string }
+  CACHE_DURATION: 5 * 60 * 1000 // 5 minutes cache duration
+};
+
+// Helper function to check if cache is valid
+const isCacheValid = (timestamp) => {
+  return Date.now() - timestamp < ACCESS_CACHE.CACHE_DURATION;
+};
+
+// Helper function to clear expired cache entries
+const clearExpiredCache = () => {
+  const now = Date.now();
+  
+  // Clear expired room cache entries
+  for (const [roomId, data] of ACCESS_CACHE.rooms.entries()) {
+    if (!isCacheValid(data.timestamp)) {
+      ACCESS_CACHE.rooms.delete(roomId);
+    }
+  }
+  
+  // Clear expired chat cache entries
+  for (const [chatId, data] of ACCESS_CACHE.chats.entries()) {
+    if (!isCacheValid(data.timestamp)) {
+      ACCESS_CACHE.chats.delete(chatId);
+    }
+  }
+};
+
+// Clear expired cache entries every 2 minutes for better performance
+setInterval(clearExpiredCache, 120000);
 
 // Spam protection configuration - OPTIMIZED FOR PERFORMANCE
 const SPAM_CONFIG = {
@@ -1509,11 +1543,20 @@ class FirebaseService {
         toUid: current.uid // Set the UID of the user accepting the invite
       });
 
-      // If accepted, create private chat
+      // If accepted, create private chat only if it doesn't exist
       if (response === 'accepted') {
         const inviteDoc = await getDoc(inviteRef);
         const inviteData = inviteDoc.data();
-        await this.createPrivateChat(inviteData.fromUsername, inviteData.toUsername);
+        
+        // Check if private chat already exists before creating
+        const chatId = this.getSafeChatId(inviteData.fromUsername, inviteData.toUsername);
+        const chatExists = await this.validateChatAccess(chatId, inviteData.toUsername);
+        
+        if (!chatExists) {
+          await this.createPrivateChat(inviteData.fromUsername, inviteData.toUsername);
+        } else {
+          console.log('Private chat already exists, skipping creation:', chatId);
+        }
         
         // Note: Private chat invite acceptances don't need room notifications
         // They are handled differently from room invites
@@ -3596,6 +3639,7 @@ class FirebaseService {
   /**
    * SECURITY: Validate if a user has access to a private chat
    * This prevents unauthorized access to private chats via URL manipulation
+   * OPTIMIZED: Uses caching to eliminate repeated database calls
    */
   async validateChatAccess(chatId, username) {
     try {
@@ -3604,14 +3648,25 @@ class FirebaseService {
         return false;
       }
 
-      console.log('Validating chat access:', { chatId, username });
+      // Check cache first for instant response
+      const cacheKey = `${chatId}:${username}`;
+      const cachedResult = ACCESS_CACHE.chats.get(cacheKey);
+      
+      if (cachedResult && isCacheValid(cachedResult.timestamp)) {
+        console.log('✅ Chat access validation from cache:', { chatId, username, hasAccess: cachedResult.hasAccess });
+        return cachedResult.hasAccess;
+      }
+
+      console.log('🔍 Validating chat access from database:', { chatId, username });
       
       // Get the chat document
       const chatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, chatId);
       const chatDoc = await getDoc(chatRef);
       
       if (!chatDoc.exists()) {
-        console.warn('Chat does not exist:', chatId);
+        console.log('Chat does not exist:', chatId);
+        // Cache negative result
+        ACCESS_CACHE.chats.set(cacheKey, { hasAccess: false, timestamp: Date.now(), username });
         return false;
       }
       
@@ -3620,11 +3675,16 @@ class FirebaseService {
       // Check if the user is a participant in this chat
       if (!chatData.participants || !Array.isArray(chatData.participants)) {
         console.warn('Invalid chat data - no participants array:', chatData);
+        // Cache negative result
+        ACCESS_CACHE.chats.set(cacheKey, { hasAccess: false, timestamp: Date.now(), username });
         return false;
       }
       
       const hasAccess = chatData.participants.includes(username);
       console.log('Chat access validation result:', { chatId, username, hasAccess, participants: chatData.participants });
+      
+      // Cache the result
+      ACCESS_CACHE.chats.set(cacheKey, { hasAccess, timestamp: Date.now(), username });
       
       return hasAccess;
       
@@ -3695,7 +3755,16 @@ class FirebaseService {
         return false;
       }
 
-      console.log('Validating room access:', { roomId, username });
+      // Check cache first for instant response
+      const cacheKey = `${roomId}:${username}`;
+      const cachedResult = ACCESS_CACHE.rooms.get(cacheKey);
+      
+      if (cachedResult && isCacheValid(cachedResult.timestamp)) {
+        console.log('✅ Room access validation from cache:', { roomId, username, hasAccess: cachedResult.hasAccess });
+        return cachedResult.hasAccess;
+      }
+
+      console.log('🔍 Validating room access from database:', { roomId, username });
       
       // Get the room document
       const roomRef = doc(db, COLLECTIONS.ROOMS, roomId);
@@ -3703,6 +3772,8 @@ class FirebaseService {
       
       if (!roomDoc.exists()) {
         console.warn('Room does not exist:', roomId);
+        // Cache negative result
+        ACCESS_CACHE.rooms.set(cacheKey, { hasAccess: false, timestamp: Date.now(), username });
         return false;
       }
       
@@ -3711,11 +3782,16 @@ class FirebaseService {
       // Check if the user is a member of this room
       if (!roomData.members || !Array.isArray(roomData.members)) {
         console.warn('Invalid room data - no members array:', roomData);
+        // Cache negative result
+        ACCESS_CACHE.rooms.set(cacheKey, { hasAccess: false, timestamp: Date.now(), username });
         return false;
       }
       
       const hasAccess = roomData.members.includes(username);
       console.log('Room access validation result:', { roomId, username, hasAccess, members: roomData.members });
+      
+      // Cache the result
+      ACCESS_CACHE.rooms.set(cacheKey, { hasAccess, timestamp: Date.now(), username });
       
       return hasAccess;
       

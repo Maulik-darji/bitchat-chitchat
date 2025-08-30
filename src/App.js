@@ -230,7 +230,7 @@ const AppContent = () => {
         setTimeout(() => {
           console.log('✅ Navigation flag reset');
           setIsNavigating(false);
-        }, 150); // Increased delay to ensure navigation completes
+        }, 50); // Reduced delay for faster navigation
       }
     }
   }, [currentView, currentRoom, currentPrivateChat, username, navigate, isNavigating, location.pathname]);
@@ -539,8 +539,15 @@ const AppContent = () => {
       
       console.log('Handling invite acceptance for:', { username, otherUsername, chatId });
       
-      // Ensure the private chat exists
-      await firebaseService.createPrivateChat(username, otherUsername);
+      // Check if private chat already exists before trying to create it
+      const chatExists = await firebaseService.validateChatAccess(chatId, username);
+      
+      if (!chatExists) {
+        // Only create the chat if it doesn't exist
+        await firebaseService.createPrivateChat(username, otherUsername);
+      } else {
+        console.log('Private chat already exists, skipping creation:', chatId);
+      }
       
       setCurrentPrivateChat({
         chatId,

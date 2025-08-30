@@ -60,6 +60,24 @@ export const PERFORMANCE_CONFIG = {
     
     // Use unique IDs for optimistic messages
     USE_UNIQUE_OPTIMISTIC_IDS: true
+  },
+
+  // Navigation Optimizations
+  NAVIGATION: {
+    // Enable access validation caching for faster page switches
+    ENABLE_ACCESS_CACHING: true,
+    
+    // Cache duration for access validation (5 minutes)
+    ACCESS_CACHE_DURATION: 5 * 60 * 1000,
+    
+    // Skip validation for cached results
+    SKIP_VALIDATION_FOR_CACHED: true,
+    
+    // Enable optimistic navigation updates
+    ENABLE_OPTIMISTIC_NAVIGATION: true,
+    
+    // Reduce navigation timeout delays
+    REDUCE_NAVIGATION_DELAYS: true
   }
 };
 
@@ -78,3 +96,4 @@ export const MESSAGE_CONFIG = PERFORMANCE_CONFIG.MESSAGE_SENDING;
 export const FILTER_CONFIG = PERFORMANCE_CONFIG.CONTENT_FILTERING;
 export const FIREBASE_CONFIG = PERFORMANCE_CONFIG.FIREBASE;
 export const UI_CONFIG = PERFORMANCE_CONFIG.UI;
+export const NAVIGATION_CONFIG = PERFORMANCE_CONFIG.NAVIGATION;
