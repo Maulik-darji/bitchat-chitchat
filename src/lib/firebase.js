@@ -473,7 +473,7 @@ class FirebaseService {
   }
 
   /**
-   * Send public message with UID tracking
+   * Send public message - OPTIMIZED VERSION
    */
   async sendPublicMessage(username, message, replyTo = null) {
     try {
@@ -481,22 +481,32 @@ class FirebaseService {
       if (!current) throw new Error('No authenticated user');
 
       const messageRef = doc(collection(db, COLLECTIONS.PUBLIC_CHATS));
-      await setDoc(messageRef, {
+      
+      // Create message data
+      const messageData = {
         id: messageRef.id,
-        uid: current.uid, // CRITICAL: Link to Auth UID
+        uid: current.uid,
         username,
         message,
         timestamp: serverTimestamp(),
-        status: 'sent', // Initial status
+        status: 'sent',
         replyTo: replyTo ? {
           id: replyTo.id,
           username: replyTo.username,
           message: replyTo.message
         } : null
+      };
+
+      // Send message to Firebase (non-blocking)
+      setDoc(messageRef, messageData).catch(error => {
+        console.error('Error sending public message:', error);
+        throw error;
       });
 
-      // Update user activity when sending message
-      await this.updateUserActivity(username);
+      // Update user activity in background (non-blocking)
+      this.updateUserActivity(username).catch(error => {
+        console.error('Error updating user activity:', error);
+      });
       
       return messageRef.id;
     } catch (error) {
@@ -542,8 +552,6 @@ class FirebaseService {
       const current = auth.currentUser;
       if (!current) throw new Error('No authenticated user');
 
-      console.log('Sending room message:', { roomId, username, message, uid: current.uid, replyTo });
-
       const messageRef = doc(collection(db, COLLECTIONS.ROOM_MESSAGES));
       const roomRef = doc(db, COLLECTIONS.ROOMS, roomId);
       
@@ -571,8 +579,11 @@ class FirebaseService {
         lastMessage: message.substring(0, 100) // Store message preview
       });
 
-      // Commit batch operations
-      await batch.commit();
+      // Commit batch operations (non-blocking)
+      batch.commit().catch(error => {
+        console.error('Error committing room message batch:', error);
+        throw error;
+      });
 
       console.log('Room message sent successfully:', messageRef.id);
 
@@ -1285,6 +1296,111 @@ class FirebaseService {
   }
 
   /**
+   * Get real-time total user count from Firestore
+   * This provides accurate count of all users in the database
+   */
+  onTotalUsersCount(callback) {
+    const unsubscribe = onSnapshot(collection(db, COLLECTIONS.USERS), (snapshot) => {
+      const totalUsers = snapshot.size;
+      callback(totalUsers);
+    });
+    this.unsubscribeFns.add(unsubscribe);
+    return () => {
+      try { unsubscribe(); } catch (_) {}
+      this.unsubscribeFns.delete(unsubscribe);
+    };
+  }
+
+  /**
+   * Get real-time active users count (users with recent activity)
+   */
+  onActiveUsersCount(callback) {
+    const unsubscribe = onSnapshot(collection(db, COLLECTIONS.USERS), (snapshot) => {
+      const now = Date.now();
+      const HEARTBEAT_TIMEOUT = 30000; // 30 seconds timeout
+      
+      let activeUsers = 0;
+      snapshot.forEach((doc) => {
+        const userData = doc.data();
+        if (userData.isTabActive && userData.lastHeartbeat) {
+          const lastHeartbeat = userData.lastHeartbeat.toDate ? userData.lastHeartbeat.toDate().getTime() : userData.lastHeartbeat;
+          const timeSinceHeartbeat = now - lastHeartbeat;
+          
+          // User is active if tab is active and heartbeat is recent
+          if (timeSinceHeartbeat < HEARTBEAT_TIMEOUT) {
+            activeUsers++;
+          }
+        }
+      });
+      
+      callback(activeUsers);
+    });
+    this.unsubscribeFns.add(unsubscribe);
+    return () => {
+      try { unsubscribe(); } catch (_) {}
+      this.unsubscribeFns.delete(unsubscribe);
+    };
+  }
+
+  /**
+   * Get comprehensive user statistics in real-time
+   */
+  onUserStats(callback) {
+    const unsubscribe = onSnapshot(collection(db, COLLECTIONS.USERS), (snapshot) => {
+      const now = Date.now();
+      const HEARTBEAT_TIMEOUT = 30000; // 30 seconds timeout
+      const RECENT_ACTIVITY_TIMEOUT = 300000; // 5 minutes
+      
+      let totalUsers = snapshot.size;
+      let activeUsers = 0;
+      let onlineUsers = 0;
+      let recentUsers = 0;
+      
+      snapshot.forEach((doc) => {
+        const userData = doc.data();
+        
+        // Count online users
+        if (userData.isOnline) {
+          onlineUsers++;
+        }
+        
+        // Count active users (tab active + recent heartbeat)
+        if (userData.isTabActive && userData.lastHeartbeat) {
+          const lastHeartbeat = userData.lastHeartbeat.toDate ? userData.lastHeartbeat.toDate().getTime() : userData.lastHeartbeat;
+          const timeSinceHeartbeat = now - lastHeartbeat;
+          
+          if (timeSinceHeartbeat < HEARTBEAT_TIMEOUT) {
+            activeUsers++;
+          }
+        }
+        
+        // Count users with recent activity
+        if (userData.lastSeen) {
+          const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
+          const timeSinceLastSeen = now - lastSeen;
+          
+          if (timeSinceLastSeen < RECENT_ACTIVITY_TIMEOUT) {
+            recentUsers++;
+          }
+        }
+      });
+      
+      callback({
+        totalUsers,
+        activeUsers,
+        onlineUsers,
+        recentUsers,
+        lastUpdated: new Date().toISOString()
+      });
+    });
+    this.unsubscribeFns.add(unsubscribe);
+    return () => {
+      try { unsubscribe(); } catch (_) {}
+      this.unsubscribeFns.delete(unsubscribe);
+    };
+  }
+
+  /**
    * Search users by username
    */
   async searchUsers(searchTerm, currentUsername) {
@@ -1705,8 +1821,11 @@ class FirebaseService {
         lastMessageAt: serverTimestamp()
       });
 
-      // Commit batch operations
-      await batch.commit();
+      // Commit batch operations (non-blocking)
+      batch.commit().catch(error => {
+        console.error('Error committing private message batch:', error);
+        throw error;
+      });
 
       console.log('Private message sent successfully:', messageRef.id);
 
@@ -2296,35 +2415,72 @@ class FirebaseService {
   }
 
   /**
-   * Get current user count
+   * Get current user count - IMPROVED VERSION
+   * This method provides accurate counts by fetching directly from Firestore
    */
   async getCurrentUserCount() {
     try {
+      console.log('Fetching accurate user count from Firestore...');
       const usersSnapshot = await getDocs(collection(db, COLLECTIONS.USERS));
       const totalUsers = usersSnapshot.size;
       
       // Count only truly active users (tab active and recent heartbeat)
       let activeUsers = 0;
+      let onlineUsers = 0;
+      let recentUsers = 0;
       const now = Date.now();
       const HEARTBEAT_TIMEOUT = 30000; // 30 seconds timeout
+      const RECENT_ACTIVITY_TIMEOUT = 300000; // 5 minutes
       
       usersSnapshot.forEach((doc) => {
         const userData = doc.data();
+        
+        // Count online users
+        if (userData.isOnline) {
+          onlineUsers++;
+        }
+        
+        // Count active users (tab active + recent heartbeat)
         if (userData.isTabActive && userData.lastHeartbeat) {
           const lastHeartbeat = userData.lastHeartbeat.toDate ? userData.lastHeartbeat.toDate().getTime() : userData.lastHeartbeat;
           const timeSinceHeartbeat = now - lastHeartbeat;
           
-          // User is active if tab is active and heartbeat is recent
           if (timeSinceHeartbeat < HEARTBEAT_TIMEOUT) {
             activeUsers++;
           }
         }
+        
+        // Count users with recent activity
+        if (userData.lastSeen) {
+          const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
+          const timeSinceLastSeen = now - lastSeen;
+          
+          if (timeSinceLastSeen < RECENT_ACTIVITY_TIMEOUT) {
+            recentUsers++;
+          }
+        }
       });
       
-      return { totalUsers, activeUsers };
+      const stats = {
+        totalUsers,
+        activeUsers,
+        onlineUsers,
+        recentUsers,
+        lastUpdated: new Date().toISOString()
+      };
+      
+      console.log('User count stats:', stats);
+      return stats;
     } catch (error) {
       console.error('Error getting user count:', error);
-      return { totalUsers: 0, activeUsers: 0 };
+      return { 
+        totalUsers: 0, 
+        activeUsers: 0, 
+        onlineUsers: 0, 
+        recentUsers: 0,
+        lastUpdated: new Date().toISOString(),
+        error: error.message 
+      };
     }
   }
 

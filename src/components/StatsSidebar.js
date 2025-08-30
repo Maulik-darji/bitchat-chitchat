@@ -4,33 +4,22 @@ import firebaseService from '../lib/firebase';
 const StatsSidebar = () => {
   const [stats, setStats] = useState({
     totalUsers: 0,
-    activeUsers: 0
+    onlineUsers: 0,
+    lastUpdated: null
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = firebaseService.onUsersUpdate((users) => {
-      const totalUsers = users.length;
-      
-      // Count only truly active users (tab active and recent heartbeat)
-      const now = Date.now();
-      const HEARTBEAT_TIMEOUT = 30000; // 30 seconds timeout
-      
-      const activeUsers = users.filter(user => {
-        if (user.isTabActive && user.lastHeartbeat) {
-          const lastHeartbeat = user.lastHeartbeat.toDate ? user.lastHeartbeat.toDate().getTime() : user.lastHeartbeat;
-          const timeSinceHeartbeat = now - lastHeartbeat;
-          
-          // User is active if tab is active and heartbeat is recent
-          return timeSinceHeartbeat < HEARTBEAT_TIMEOUT;
-        }
-        return false;
-      }).length;
-      
+    // Use the new comprehensive user stats method for real-time updates
+    const unsubscribe = firebaseService.onUserStats((userStats) => {
+      // Only keep totalUsers, onlineUsers, and lastUpdated
       setStats({
-        totalUsers,
-        activeUsers
+        totalUsers: userStats.totalUsers,
+        onlineUsers: userStats.onlineUsers,
+        lastUpdated: userStats.lastUpdated
       });
+      setIsLoading(false);
     });
 
     return () => unsubscribe();
@@ -41,7 +30,12 @@ const StatsSidebar = () => {
     
     try {
       const currentStats = await firebaseService.getCurrentUserCount();
-      setStats(currentStats);
+      // Only keep totalUsers, onlineUsers, and lastUpdated
+      setStats({
+        totalUsers: currentStats.totalUsers,
+        onlineUsers: currentStats.onlineUsers,
+        lastUpdated: currentStats.lastUpdated
+      });
     } catch (error) {
       console.error('Error refreshing stats:', error);
     } finally {
@@ -49,6 +43,29 @@ const StatsSidebar = () => {
       setTimeout(() => setIsRefreshing(false), 1000);
     }
   };
+
+  const formatLastUpdated = (timestamp) => {
+    if (!timestamp) return 'Never';
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString();
+    } catch (error) {
+      return 'Invalid time';
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="w-full h-screen bg-[#181818] backdrop-blur-sm border-l border-gray-700/50 p-6 flex-shrink-0 overflow-hidden shadow-lg">
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-400 mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading user statistics...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-screen bg-[#181818] backdrop-blur-sm border-l border-gray-700/50 p-6 flex-shrink-0 overflow-hidden shadow-lg">
@@ -59,19 +76,20 @@ const StatsSidebar = () => {
           </svg>
           Statistics
         </h2>
-        <p className="text-gray-400 text-sm mb-4 text-left">Real-time user activity</p>
+        <p className="text-gray-400 text-sm mb-4 text-left">Real-time user activity from Firestore</p>
       </div>
 
       <div className="space-y-4">
-        {/* Total Users */}
+        {/* Total Users - Most Important */}
         <div className="backdrop-blur-sm rounded-2xl p-4 border border-gray-700/30" style={{backgroundColor: '#303030'}}>
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <div className="w-3 h-3 bg-gray-500 rounded-full mr-3"></div>
+              <div className="w-3 h-3 bg-blue-500 rounded-full mr-3"></div>
               <span className="text-gray-300 font-medium">Total Users</span>
             </div>
-            <span className="text-2xl font-bold text-gray-400">{stats.totalUsers}</span>
+            <span className="text-2xl font-bold text-blue-400">{stats.totalUsers}</span>
           </div>
+          <p className="text-xs text-gray-500 mt-1">All registered users in database</p>
         </div>
 
         {/* Active Users */}
@@ -81,8 +99,9 @@ const StatsSidebar = () => {
               <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
               <span className="text-gray-300 font-medium">Active Users</span>
             </div>
-            <span className="text-2xl font-bold text-green-400">{stats.activeUsers}</span>
+            <span className="text-2xl font-bold text-green-400">{stats.onlineUsers}</span>
           </div>
+          <p className="text-xs text-gray-500 mt-1">Currently online</p>
         </div>
       </div>
 
@@ -112,13 +131,15 @@ const StatsSidebar = () => {
       </div>
 
       {/* Last Update */}
-      {stats.totalUsers > 0 && (
+      {stats.lastUpdated && (
         <div className="mt-4 text-center">
           <p className="text-xs text-gray-500">
-            Last updated: {new Date().toLocaleTimeString()}
+            Last updated: {formatLastUpdated(stats.lastUpdated)}
           </p>
         </div>
       )}
+
+
     </div>
   );
 };

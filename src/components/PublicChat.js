@@ -256,80 +256,79 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
     const messageText = newMessage.trim();
     
     // Check content moderation
-    if (!isMessageClean(messageText)) {
+    const contentCheck = isMessageClean(messageText);
+    if (!contentCheck.isClean) {
       setModerationMessage(messageText);
       setShowContentModeration(true);
       return;
     }
     
-    // If message is clean, send it directly
+    // If message is clean, send it immediately with optimistic update
     await sendMessageToFirebase(messageText);
   };
 
-  // Separate function to send message to Firebase
+  // Optimized function to send message to Firebase with instant feedback
   const sendMessageToFirebase = async (messageText) => {
+    // Clear input immediately for instant feedback
     setNewMessage('');
-    setIsSending(true);
-
-    try {
-      // Check spam protection
-      const spamCheck = firebaseService.checkSpam(username);
-      if (!spamCheck.allowed) {
-        setSpamError(spamCheck.reason);
-        setIsSending(false);
-        return;
-      }
-
-      // Create optimistic message
-      const optimisticMessage = {
-        id: `temp_${Date.now()}`,
-        username,
-        message: messageText,
-        timestamp: new Date(),
-        isOptimistic: true,
-        replyTo: replyingTo ? {
-          id: replyingTo.id,
-          username: replyingTo.username,
-          message: replyingTo.message
-        } : null
-      };
-
-      // Add to local state immediately
-      setMessages(prev => [...prev, optimisticMessage]);
-
-      // Send to Firebase
-      await firebaseService.sendPublicMessage(username, messageText, replyingTo ? {
+    
+    // Create optimistic message with unique ID
+    const optimisticMessage = {
+      id: `temp_${Date.now()}_${Math.random()}`,
+      username,
+      message: messageText,
+      timestamp: new Date(),
+      isOptimistic: true,
+      replyTo: replyingTo ? {
         id: replyingTo.id,
         username: replyingTo.username,
         message: replyingTo.message
-      } : null);
+      } : null
+    };
 
-      // Remove optimistic message and let Firebase update handle the real message
-      setMessages(prev => prev.filter(msg => !msg.isOptimistic));
-      
-      // Clear reply state AFTER successful send
-      setReplyingTo(null);
-      
-      // Auto-scroll to bottom when user sends a message
-      setShouldAutoScroll(true);
-      setIsUserScrolling(false);
-    } catch (error) {
-      console.error('Error sending message:', error);
-      setSpamError(error.message);
-      
-      // Remove optimistic message on error
-      setMessages(prev => prev.filter(msg => !msg.isOptimistic));
-    } finally {
-      setIsSending(false);
-      // Restore focus on desktop devices after sending message
-      if (isDesktop) {
-        // Use a short delay to ensure the DOM has updated
-        setTimeout(() => {
-          if (inputRef.current && !editingMessage) {
-            inputRef.current.focus();
-          }
-        }, 50);
+    // Add to local state immediately for instant UI update
+    setMessages(prev => [...prev, optimisticMessage]);
+
+    // Clear reply state immediately
+    setReplyingTo(null);
+    
+    // Auto-scroll to bottom immediately
+    setShouldAutoScroll(true);
+    setIsUserScrolling(false);
+
+    // Send to Firebase in background (non-blocking)
+    try {
+      // Use fast spam check for better performance
+      const spamCheck = firebaseService.checkSpamFast(username);
+      if (!spamCheck.allowed) {
+        setSpamError(spamCheck.reason);
+        // Remove optimistic message on spam error
+        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+        return;
       }
+
+      // Send to Firebase without waiting for completion
+      firebaseService.sendPublicMessage(username, messageText, replyingTo ? {
+        id: replyingTo.id,
+        username: replyingTo.username,
+        message: replyingTo.message
+      } : null).catch(error => {
+        console.error('Error sending message:', error);
+        setSpamError(error.message);
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+      });
+
+    } catch (error) {
+      console.error('Error in spam check:', error);
+      setSpamError('Error checking spam protection');
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+    }
+
+    // Restore focus immediately on desktop
+    if (isDesktop && inputRef.current && !editingMessage) {
+      inputRef.current.focus();
     }
   };
 

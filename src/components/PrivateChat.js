@@ -274,63 +274,62 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
     const messageText = newMessage.trim();
     
     // Check content moderation
-    if (!isMessageClean(messageText)) {
+    const contentCheck = isMessageClean(messageText);
+    if (!contentCheck.isClean) {
       setModerationMessage(messageText);
       setShowContentModeration(true);
       return;
     }
     
+    // Clear input immediately for instant feedback
     setNewMessage('');
-    setIsSending(true);
-
-    try {
-      // Create optimistic message
-      const optimisticMessage = {
-        id: `temp_${Date.now()}`,
-        chatId,
-        username,
-        message: messageText,
-        timestamp: new Date(),
-        isOptimistic: true,
-        replyTo: replyingTo ? {
-          id: replyingTo.id,
-          username: replyingTo.username,
-          message: replyingTo.message
-        } : null
-      };
-
-      // Add optimistic message to UI
-      setMessages(prev => [...prev, optimisticMessage]);
-
-      // Send message to Firebase
-      await firebaseService.sendPrivateMessage(chatId, username, messageText, replyingTo ? {
+    
+    // Create optimistic message with unique ID
+    const optimisticMessage = {
+      id: `temp_${Date.now()}_${Math.random()}`,
+      chatId,
+      username,
+      message: messageText,
+      timestamp: new Date(),
+      isOptimistic: true,
+      replyTo: replyingTo ? {
         id: replyingTo.id,
         username: replyingTo.username,
         message: replyingTo.message
-      } : null);
+      } : null
+    };
 
-      // Clear reply state
-      setReplyingTo(null);
-      
-      // Auto-scroll to bottom when user sends a message
-      setShouldAutoScroll(true);
-      setIsUserScrolling(false);
+    // Add optimistic message to UI immediately
+    setMessages(prev => [...prev, optimisticMessage]);
+
+    // Clear reply state immediately
+    setReplyingTo(null);
+    
+    // Auto-scroll to bottom immediately
+    setShouldAutoScroll(true);
+    setIsUserScrolling(false);
+    
+    // Send message to Firebase in background (non-blocking)
+    try {
+      firebaseService.sendPrivateMessage(chatId, username, messageText, replyingTo ? {
+        id: replyingTo.id,
+        username: replyingTo.username,
+        message: replyingTo.message
+      } : null).catch(error => {
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+        console.error('Error sending message:', error);
+      });
       
     } catch (error) {
       // Remove optimistic message on error
-      setMessages(prev => prev.filter(msg => !msg.isOptimistic));
+      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
       console.error('Error sending message:', error);
-    } finally {
-      setIsSending(false);
-      // Restore focus on desktop devices after sending message
-      if (isDesktop) {
-        // Use a short delay to ensure the DOM has updated
-        setTimeout(() => {
-          if (inputRef.current && !editingMessage) {
-            inputRef.current.focus();
-          }
-        }, 50);
-      }
+    }
+
+    // Restore focus immediately on desktop
+    if (isDesktop && inputRef.current && !editingMessage) {
+      inputRef.current.focus();
     }
   };
 

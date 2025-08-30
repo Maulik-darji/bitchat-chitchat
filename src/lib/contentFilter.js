@@ -171,47 +171,43 @@ export function filterMessage(message) {
 }
 
 /**
- * Check if a message contains vulgar content without filtering it
+ * Check if a message contains vulgar or inappropriate content
  * @param {string} message - The message to check
- * @returns {boolean} - True if message is clean, false if it contains vulgar content
+ * @returns {Object} - Object with isClean (boolean) and filteredMessage (string)
  */
 export function isMessageClean(message) {
   if (!message || typeof message !== 'string') {
-    return true;
+    return { isClean: true, filteredMessage: message };
   }
 
-  // Check if filtering is enabled
-  if (!FILTER_CONFIG.ENABLED) {
-    return true;
+  // Fast path: check if message is too short to contain vulgar content
+  if (message.length < 3) {
+    return { isClean: true, filteredMessage: message };
   }
 
-  const lowerMessage = message.toLowerCase();
-  
-  // Combine default vulgar words with custom additional words
-  const allVulgarWords = [...VULGAR_WORDS, ...CUSTOM_FILTER_RULES.ADDITIONAL_WORDS];
-  
-  // Use a single regex for better performance instead of multiple regex tests
-  // Properly escape special regex characters including asterisks
-  const escapedWords = allVulgarWords.map(word => 
-    word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  );
-  const vulgarPattern = new RegExp(`\\b(${escapedWords.join('|')})\\b`, 'gi');
-  
+  // Create a single optimized regex pattern for all vulgar words
+  if (!window.vulgarPattern) {
+    const vulgarWords = VULGAR_WORDS.map(word => 
+      word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    ).join('|');
+    window.vulgarPattern = new RegExp(`\\b(${vulgarWords})\\b`, 'gi');
+  }
+
   // Check for vulgar words with single regex test
-  if (vulgarPattern.test(lowerMessage)) {
-    return false;
+  if (window.vulgarPattern.test(message)) {
+    return { isClean: false, filteredMessage: message };
   }
 
-  // Check for patterns if enabled (only if no vulgar words found)
-  if (FILTER_CONFIG.FILTER_SPACED_PATTERNS) {
+  // Only check patterns if message is longer and no vulgar words found
+  if (message.length > 10 && FILTER_CONFIG.FILTER_SPACED_PATTERNS) {
     for (const pattern of PATTERNS) {
       if (pattern.test(message)) {
-        return false;
+        return { isClean: false, filteredMessage: message };
       }
     }
   }
 
-  return true;
+  return { isClean: true, filteredMessage: message };
 }
 
 /**

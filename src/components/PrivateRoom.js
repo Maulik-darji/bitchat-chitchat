@@ -325,54 +325,50 @@ const PrivateRoom = (props) => {
     const messageText = newMessage.trim();
     
     // Check content moderation
-    if (!isMessageClean(messageText)) {
+    const contentCheck = isMessageClean(messageText);
+    if (!contentCheck.isClean) {
       setModerationMessage(messageText);
       setShowContentModeration(true);
       return;
     }
     
+    // Clear input immediately for instant feedback
     setNewMessage('');
-    setIsSending(true);
+    
+    // Create optimistic message with unique ID
+    const optimisticMessage = {
+      id: `temp_${Date.now()}_${Math.random()}`,
+      roomId: room.roomId,
+      username,
+      message: messageText,
+      timestamp: new Date(),
+      isOptimistic: true
+    };
 
+    // Add to local state immediately for instant feedback
+    setMessages(prev => [...prev, optimisticMessage]);
+    
+    // Auto-scroll to bottom immediately
+    setShouldAutoScroll(true);
+    setIsUserScrolling(false);
+    
+    // Send to Firebase in background (non-blocking)
     try {
-      // Create optimistic message (like public chat)
-      const optimisticMessage = {
-        id: `temp_${Date.now()}`,
-        roomId: room.roomId,
-        username,
-        message: messageText,
-        timestamp: new Date(),
-        isOptimistic: true
-      };
-
-      // Add to local state immediately (like public chat)
-      setMessages(prev => [...prev, optimisticMessage]);
-
-      // Send to Firebase
-      await firebaseService.sendRoomMessage(room.roomId, username, messageText);
-
-      // Remove optimistic message and let Firebase update handle the real message
-      setMessages(prev => prev.filter(msg => !msg.isOptimistic));
-      
-      // Auto-scroll to bottom when user sends a message
-      setShouldAutoScroll(true);
-      setIsUserScrolling(false);
+      firebaseService.sendRoomMessage(room.roomId, username, messageText).catch(error => {
+        console.error('Error sending message:', error);
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+      });
       
     } catch (error) {
       console.error('Error sending message:', error);
       // Remove optimistic message on error
-      setMessages(prev => prev.filter(msg => !msg.isOptimistic));
-    } finally {
-      setIsSending(false);
-      // Restore focus on desktop devices after sending message
-      if (isDesktop) {
-        // Use a short delay to ensure the DOM has updated
-        setTimeout(() => {
-          if (inputRef.current && !editingMessage) {
-            inputRef.current.focus();
-          }
-        }, 50);
-      }
+      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+    }
+
+    // Restore focus immediately on desktop
+    if (isDesktop && inputRef.current && !editingMessage) {
+      inputRef.current.focus();
     }
   };
 
@@ -393,53 +389,41 @@ const PrivateRoom = (props) => {
     setModerationMessage('');
     
     setNewMessage('');
-    setIsSending(true);
     
+    // Create optimistic message with unique ID
+    const optimisticMessage = {
+      id: `temp_${Date.now()}_${Math.random()}`,
+      roomId: room.roomId,
+      username,
+      message: messageToSend,
+      timestamp: new Date(),
+      isOptimistic: true
+    };
+
+    // Add to local state IMMEDIATELY for instant feedback
+    setMessages(prev => [...prev, optimisticMessage]);
+    
+    // Auto-scroll to bottom immediately
+    setShouldAutoScroll(true);
+    setIsUserScrolling(false);
+    
+    // Send to Firebase in background (non-blocking)
     try {
-      // Create optimistic message (like public chat) - ADD IMMEDIATELY
-      const optimisticMessage = {
-        id: `temp_${Date.now()}`,
-        roomId: room.roomId,
-        username,
-        message: messageToSend,
-        timestamp: new Date(),
-        isOptimistic: true
-      };
-
-      // Add to local state IMMEDIATELY for instant feedback (like public chat)
-      setMessages(prev => [...prev, optimisticMessage]);
-
-      // Send to Firebase (now optimized to be non-blocking)
-      await firebaseService.sendRoomMessage(room.roomId, username, messageToSend);
-
-      // Remove optimistic message and let Firebase update handle the real message
-      setMessages(prev => prev.filter(msg => !msg.isOptimistic));
-      
-      // Auto-scroll to bottom when user sends a message
-      setShouldAutoScroll(true);
-      setIsUserScrolling(false);
+      firebaseService.sendRoomMessage(room.roomId, username, messageToSend).catch(error => {
+        console.error('Error sending moderated message:', error);
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+      });
       
     } catch (error) {
       console.error('Error sending moderated message:', error);
       // Remove optimistic message on error
-      setMessages(prev => prev.filter(msg => !msg.isOptimistic));
-    } finally {
-      setIsSending(false);
-      if (isDesktop) {
-        if (inputRef.current && !editingMessage) {
-          inputRef.current.focus();
-        }
-        setTimeout(() => {
-          if (inputRef.current && !editingMessage) {
-            inputRef.current.focus();
-          }
-        }, 0);
-        setTimeout(() => {
-          if (inputRef.current && !editingMessage) {
-            inputRef.current.focus();
-          }
-        }, 100);
-      }
+      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+    }
+
+    // Restore focus immediately on desktop
+    if (isDesktop && inputRef.current && !editingMessage) {
+      inputRef.current.focus();
     }
   };
 
