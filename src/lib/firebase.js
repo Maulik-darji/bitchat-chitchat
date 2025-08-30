@@ -124,6 +124,13 @@ const clearExpiredCache = () => {
 // Clear expired cache entries every 2 minutes for better performance
 setInterval(clearExpiredCache, 120000);
 
+// Set up periodic stale session cleanup (every 2 minutes)
+setInterval(() => {
+  if (firebaseService) {
+    firebaseService.cleanupStaleSessions().catch(console.error);
+  }
+}, 120000);
+
 // Spam protection configuration - OPTIMIZED FOR PERFORMANCE
 const SPAM_CONFIG = {
   MAX_MESSAGES: 15, // Increased from 10 for better user experience
@@ -1309,7 +1316,7 @@ class FirebaseService {
     const unsubscribe = onSnapshot(collection(db, COLLECTIONS.USERS), (snapshot) => {
       const users = [];
       const now = Date.now();
-      const HEARTBEAT_TIMEOUT = 30000; // 30 seconds timeout
+      const HEARTBEAT_TIMEOUT = 20000; // 20 seconds timeout for more accurate tracking
       
       snapshot.forEach((doc) => {
         const userData = doc.data();
@@ -1355,7 +1362,7 @@ class FirebaseService {
   onActiveUsersCount(callback) {
     const unsubscribe = onSnapshot(collection(db, COLLECTIONS.USERS), (snapshot) => {
       const now = Date.now();
-      const HEARTBEAT_TIMEOUT = 30000; // 30 seconds timeout
+      const HEARTBEAT_TIMEOUT = 20000; // 20 seconds timeout for more accurate tracking
       
       let activeUsers = 0;
       snapshot.forEach((doc) => {
@@ -1386,7 +1393,7 @@ class FirebaseService {
   onUserStats(callback) {
     const unsubscribe = onSnapshot(collection(db, COLLECTIONS.USERS), (snapshot) => {
       const now = Date.now();
-      const HEARTBEAT_TIMEOUT = 30000; // 30 seconds timeout
+      const HEARTBEAT_TIMEOUT = 20000; // 20 seconds timeout for more accurate tracking
       const RECENT_ACTIVITY_TIMEOUT = 300000; // 5 minutes
       
       let totalUsers = snapshot.size;
@@ -2528,7 +2535,7 @@ class FirebaseService {
       let onlineUsers = 0;
       let recentUsers = 0;
       const now = Date.now();
-      const HEARTBEAT_TIMEOUT = 30000; // 30 seconds timeout
+      const HEARTBEAT_TIMEOUT = 20000; // 20 seconds timeout for more accurate tracking
       const RECENT_ACTIVITY_TIMEOUT = 300000; // 5 minutes
       
       usersSnapshot.forEach((doc) => {
@@ -4157,6 +4164,74 @@ class FirebaseService {
       }
     } catch (error) {
       console.error('Error checking online users for message delivery:', error);
+    }
+  }
+
+  /**
+   * Handle user leaving the page (browser close, tab close, navigation)
+   */
+  async handleUserLeft(username) {
+    try {
+      const current = auth.currentUser;
+      if (!current) return;
+
+      const userRef = doc(db, COLLECTIONS.USERS, username);
+      
+      // Immediately mark user as inactive
+      await updateDoc(userRef, {
+        isOnline: false,
+        isTabActive: false,
+        lastSeen: serverTimestamp(),
+        lastTabActivity: serverTimestamp(),
+        lastHeartbeat: serverTimestamp(),
+        uid: current.uid
+      });
+      
+      // Remove from online users
+      onlineUsers.delete(username);
+      
+      console.log(`User ${username} marked as inactive (left the page)`);
+    } catch (error) {
+      console.error('Error handling user leaving:', error);
+    }
+  }
+
+  /**
+   * Clean up stale user sessions (called periodically)
+   */
+  async cleanupStaleSessions() {
+    try {
+      const now = Date.now();
+      const STALE_TIMEOUT = 60000; // 1 minute
+      
+      const usersSnapshot = await getDocs(collection(db, COLLECTIONS.USERS));
+      const batch = writeBatch(db);
+      let cleanedCount = 0;
+      
+      usersSnapshot.forEach((doc) => {
+        const userData = doc.data();
+        if (userData.lastHeartbeat) {
+          const lastHeartbeat = userData.lastHeartbeat.toDate ? userData.lastHeartbeat.toDate().getTime() : userData.lastHeartbeat;
+          const timeSinceHeartbeat = now - lastHeartbeat;
+          
+          // If user hasn't sent heartbeat in over 1 minute, mark as inactive
+          if (timeSinceHeartbeat > STALE_TIMEOUT && userData.isOnline) {
+            batch.update(doc.ref, {
+              isOnline: false,
+              isTabActive: false
+            });
+            cleanedCount++;
+            onlineUsers.delete(userData.username);
+          }
+        }
+      });
+      
+      if (cleanedCount > 0) {
+        await batch.commit();
+        console.log(`Cleaned up ${cleanedCount} stale user sessions`);
+      }
+    } catch (error) {
+      console.error('Error cleaning up stale sessions:', error);
     }
   }
 }

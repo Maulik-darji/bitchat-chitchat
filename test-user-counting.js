@@ -35,7 +35,7 @@ async function testUserCounting() {
     let activeUsers = 0;
     let recentUsers = 0;
     const now = Date.now();
-    const HEARTBEAT_TIMEOUT = 30000; // 30 seconds
+    const HEARTBEAT_TIMEOUT = 20000; // 20 seconds for more accurate tracking
     const RECENT_ACTIVITY_TIMEOUT = 300000; // 5 minutes
     
     usersSnapshot.forEach((doc) => {

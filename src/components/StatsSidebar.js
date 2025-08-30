@@ -4,7 +4,7 @@ import firebaseService from '../lib/firebase';
 const StatsSidebar = () => {
   const [stats, setStats] = useState({
     totalUsers: 0,
-    onlineUsers: 0,
+    activeUsers: 0,
     lastUpdated: null
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -13,10 +13,10 @@ const StatsSidebar = () => {
   useEffect(() => {
     // Use the new comprehensive user stats method for real-time updates
     const unsubscribe = firebaseService.onUserStats((userStats) => {
-      // Only keep totalUsers, onlineUsers, and lastUpdated
+      // Display activeUsers instead of onlineUsers for more accurate count
       setStats({
         totalUsers: userStats.totalUsers,
-        onlineUsers: userStats.onlineUsers,
+        activeUsers: userStats.activeUsers,
         lastUpdated: userStats.lastUpdated
       });
       setIsLoading(false);
@@ -30,10 +30,10 @@ const StatsSidebar = () => {
     
     try {
       const currentStats = await firebaseService.getCurrentUserCount();
-      // Only keep totalUsers, onlineUsers, and lastUpdated
+      // Display activeUsers instead of onlineUsers for more accurate count
       setStats({
         totalUsers: currentStats.totalUsers,
-        onlineUsers: currentStats.onlineUsers,
+        activeUsers: currentStats.activeUsers,
         lastUpdated: currentStats.lastUpdated
       });
     } catch (error) {
@@ -99,9 +99,9 @@ const StatsSidebar = () => {
               <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
               <span className="text-gray-300 font-medium">Active Users</span>
             </div>
-            <span className="text-2xl font-bold text-green-400">{stats.onlineUsers}</span>
+            <span className="text-2xl font-bold text-green-400">{stats.activeUsers}</span>
           </div>
-          <p className="text-xs text-gray-500 mt-1">Currently online</p>
+          <p className="text-xs text-gray-500 mt-1">Currently browsing the website</p>
         </div>
       </div>
 

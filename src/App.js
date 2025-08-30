@@ -425,8 +425,8 @@ const AppContent = () => {
     window.addEventListener('focus', handleFocus);
     window.addEventListener('blur', handleBlur);
 
-    // Start heartbeat (every 15 seconds)
-    heartbeatInterval = setInterval(sendHeartbeat, 15000);
+    // Start heartbeat (every 10 seconds for more accurate tracking)
+    heartbeatInterval = setInterval(sendHeartbeat, 10000);
 
     // Initial status update
     updateTabStatus(true);
@@ -444,6 +444,47 @@ const AppContent = () => {
       if (username) {
         firebaseService.updateUserTabStatus(username, false).catch(console.error);
       }
+    };
+  }, [username]);
+
+  // Handle browser/tab close - immediately mark user as inactive
+  useEffect(() => {
+    if (!username) return;
+
+    const handleBeforeUnload = async () => {
+      try {
+        // Use sendBeacon for more reliable delivery during page unload
+        if (navigator.sendBeacon) {
+          const data = new FormData();
+          data.append('username', username);
+          data.append('action', 'userLeft');
+          navigator.sendBeacon('/api/user-left', data);
+        }
+        
+        // Use the new handleUserLeft method for better status tracking
+        await firebaseService.handleUserLeft(username);
+      } catch (error) {
+        // Ignore errors during page unload
+        console.log('User left the page');
+      }
+    };
+
+    const handlePageHide = async () => {
+      try {
+        // Use the new handleUserLeft method for better status tracking
+        await firebaseService.handleUserLeft(username);
+      } catch (error) {
+        // Ignore errors during page hide
+        console.log('User left the page');
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
     };
   }, [username]);
 
