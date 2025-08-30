@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import './App.css';
 import UsernameModal from './components/UsernameModal';
@@ -34,48 +34,67 @@ const AppContent = () => {
   const resizeRef = useRef(null);
   const [securityWarning, setSecurityWarning] = useState(null);
   const [isNavigating, setIsNavigating] = useState(false); // Flag to prevent circular dependency
+  const navigationRef = useRef(false); // More reliable navigation tracking
+  const lastNavigationTime = useRef(0); // Track last navigation time for debouncing
+  const [viewTransition, setViewTransition] = useState(false); // Smooth view transitions
 
 
   // Handle URL changes and validate access
   useEffect(() => {
-    if (isNavigating) {
+    if (isNavigating || navigationRef.current) {
       console.log('🚫 Skipping URL change handling - programmatically navigating');
       return; // Skip if we're programmatically navigating
     }
     
-    console.log('📍 URL changed to:', location.pathname);
-    const path = location.pathname;
-    if (path === '/') {
-      console.log('🏠 Setting view to home from URL');
-      setCurrentView('home');
-    } else if (path.startsWith('/room/')) {
-      const roomId = path.split('/room/')[1];
+    // Debounce URL change handling to prevent rapid successive calls
+    const timeoutId = setTimeout(() => {
+      console.log('📍 URL changed to:', location.pathname);
+      const path = location.pathname;
       
-      // SECURITY: Validate that the user has access to this room
-      if (username && roomId) {
-        validateRoomAccess(roomId, username);
-      } else {
-        // If not authenticated or no username, redirect to home
-        navigate('/', { replace: true });
+      // Only update currentView if it's different from what we're about to set
+      // This prevents unnecessary state updates that could trigger the sync effect
+      if (path === '/' && currentView !== 'home') {
+        console.log('🏠 Setting view to home from URL');
+        setCurrentView('home');
+      } else if (path.startsWith('/room/')) {
+        const roomId = path.split('/room/')[1];
+        
+        // SECURITY: Validate that the user has access to this room
+        if (username && roomId) {
+          validateRoomAccess(roomId, username);
+        } else {
+          // If not authenticated or no username, redirect to home
+          navigate('/', { replace: true });
+        }
+      } else if (path.startsWith('/chat/')) {
+        const chatId = path.split('/chat/')[1];
+        
+        // SECURITY: Validate that the user has access to this chat
+        if (username && chatId) {
+          // Only validate if we don't already have this chat loaded
+          if (!currentPrivateChat || currentPrivateChat.chatId !== chatId) {
+            validateChatAccess(chatId, username);
+          } else {
+            console.log('🔄 Chat already loaded, skipping validation:', chatId);
+          }
+        } else {
+          // If not authenticated or no username, redirect to home
+          navigate('/', { replace: true });
+        }
+      } else if (path === '/join-room' && currentView !== 'join-room') {
+        console.log('🔗 Setting view to join-room from URL');
+        setCurrentView('join-room');
+      } else if (path === '/create-room' && currentView !== 'create-room') {
+        console.log('🔗 Setting view to create-room from URL');
+        setCurrentView('create-room');
+      } else if (path === '/invite-user' && currentView !== 'invite-user') {
+        console.log('🔗 Setting view to invite-user from URL');
+        setCurrentView('invite-user');
       }
-    } else if (path.startsWith('/chat/')) {
-      const chatId = path.split('/chat/')[1];
-      
-      // SECURITY: Validate that the user has access to this chat
-      if (username && chatId) {
-        validateChatAccess(chatId, username);
-      } else {
-        // If not authenticated or no username, redirect to home
-        navigate('/', { replace: true });
-      }
-    } else if (path === '/join-room') {
-      setCurrentView('join-room');
-    } else if (path === '/create-room') {
-      setCurrentView('create-room');
-    } else if (path === '/invite-user') {
-      setCurrentView('invite-user');
-    }
-  }, [location.pathname, username, navigate, isNavigating]);
+    }, 100); // 100ms debounce
+    
+    return () => clearTimeout(timeoutId);
+  }, [location.pathname, username, navigate, isNavigating, currentView, currentPrivateChat]);
 
   // Function to validate chat access
   const validateChatAccess = async (chatId, username) => {
@@ -95,6 +114,13 @@ const AppContent = () => {
         setSecurityWarning(`Security Alert: Invalid chat URL characters detected. This incident has been logged.`);
         setTimeout(() => setSecurityWarning(null), 5000);
         navigate('/', { replace: true });
+        return;
+      }
+
+      // Check if we already have this chat loaded to prevent redundant calls
+      if (currentPrivateChat && currentPrivateChat.chatId === chatId) {
+        console.log('🔄 Chat already loaded, skipping validation:', chatId);
+        setCurrentView('private-chat');
         return;
       }
 
@@ -175,7 +201,7 @@ const AppContent = () => {
 
   // Sync current view with URL - FIXED to prevent circular dependency
   useEffect(() => {
-    if (username && !isNavigating) {
+    if (username && !isNavigating && !navigationRef.current) {
       const path = location.pathname;
       let shouldNavigate = false;
       let targetPath = '/';
@@ -221,16 +247,26 @@ const AppContent = () => {
       }
       
       if (shouldNavigate) {
+        // Debounce navigation to prevent rapid successive attempts
+        const now = Date.now();
+        if (now - lastNavigationTime.current < 200) {
+          console.log('🚫 Skipping navigation - too soon after last navigation');
+          return;
+        }
+        
         console.log('🔄 Syncing currentView to URL:', currentView, '->', targetPath);
         setIsNavigating(true); // Set flag to prevent circular dependency
+        navigationRef.current = true; // Set ref flag
+        lastNavigationTime.current = now; // Update last navigation time
         
         navigate(targetPath, { replace: true });
         
-        // Reset flag after navigation completes
+        // Reset flags after navigation completes
         setTimeout(() => {
           console.log('✅ Navigation flag reset');
           setIsNavigating(false);
-        }, 50); // Reduced delay for faster navigation
+          navigationRef.current = false;
+        }, 100); // Increased timeout for reliability
       }
     }
   }, [currentView, currentRoom, currentPrivateChat, username, navigate, isNavigating, location.pathname]);
@@ -657,6 +693,34 @@ const AppContent = () => {
     return () => window.removeEventListener('resize', handleWindowResize);
   }, [sidebarWidth]);
 
+  // Create a stable navigation handler to prevent infinite loops
+  const handleViewChange = useCallback((newView) => {
+    if (isNavigating || navigationRef.current) {
+      console.log('🚫 Skipping view change - navigation in progress');
+      return;
+    }
+    
+    // Debounce view changes to prevent rapid successive attempts
+    const now = Date.now();
+    if (now - lastNavigationTime.current < 200) {
+      console.log('🚫 Skipping view change - too soon after last navigation');
+      return;
+    }
+    
+    console.log('🔄 Changing view to:', newView);
+    
+    // Start smooth transition
+    setViewTransition(true);
+    
+    // Small delay for smooth transition effect
+    setTimeout(() => {
+      setCurrentView(newView);
+      setViewTransition(false);
+    }, 150);
+    
+    lastNavigationTime.current = now; // Update last navigation time
+  }, [isNavigating]);
+
   if (isInitializing) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#181818' }}>
@@ -700,7 +764,7 @@ const AppContent = () => {
         >
           <Sidebar
             currentView={currentView}
-            onViewChange={setCurrentView}
+            onViewChange={handleViewChange}
             username={username}
             onLogout={handleLogout}
             isLoggingOut={isLoggingOut}
@@ -858,7 +922,7 @@ const AppContent = () => {
                   roomId={currentRoom.id}
                   roomName={currentRoom.name}
                   username={username}
-                  onViewChange={setCurrentView}
+                  onViewChange={handleViewChange}
                   onLeaveRoom={() => {
                     setCurrentView('home');
                     setCurrentRoom(null);
@@ -1002,7 +1066,7 @@ const AppContent = () => {
             <div className="w-64 h-full overflow-y-auto" style={{ backgroundColor: '#181818' }}>
               <Sidebar
                 currentView={currentView}
-                onViewChange={setCurrentView}
+                onViewChange={handleViewChange}
                 username={username}
                 onLogout={handleLogout}
                 isLoggingOut={isLoggingOut}

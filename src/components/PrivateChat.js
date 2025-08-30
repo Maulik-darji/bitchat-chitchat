@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import firebaseService from '../lib/firebase';
 import MessageActions from './MessageActions';
 import ContentModeration from './ContentModeration';
@@ -185,7 +185,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
         console.error('Error cleaning up private chat messages listener:', error);
       }
     };
-  }, [chatId, username]);
+  }, [chatId, username, preserveScrollPosition]);
 
   useEffect(() => {
     // Only auto-scroll if user is at bottom or if this is the first load

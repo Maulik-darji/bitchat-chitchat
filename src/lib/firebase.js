@@ -1968,6 +1968,22 @@ class FirebaseService {
    */
   onPrivateChatMessagesUpdate(chatId, callback) {
     try {
+      // Check if listener already exists for this chat
+      if (this.activeListeners.has(chatId)) {
+        console.log('🔄 Listener already exists for chat:', chatId, '- reusing existing listener');
+        const existingListener = this.activeListeners.get(chatId);
+        // Add the new callback to existing listener
+        existingListener.callbacks.add(callback);
+        return () => {
+          existingListener.callbacks.delete(callback);
+          if (existingListener.callbacks.size === 0) {
+            // No more callbacks, clean up the listener
+            existingListener.unsubscribe();
+            this.activeListeners.delete(chatId);
+          }
+        };
+      }
+
       console.log('Setting up private chat messages listener for:', chatId);
       
       // Use simple query without orderBy to avoid index issues
@@ -1993,16 +2009,52 @@ class FirebaseService {
         
         console.log('Private chat messages updated:', messages.length, 'messages for chat', chatId);
         console.log('All messages:', messages);
-        callback(messages);
+        
+        // Call all registered callbacks
+        const listener = this.activeListeners.get(chatId);
+        if (listener) {
+          listener.callbacks.forEach(cb => {
+            try {
+              cb(messages);
+            } catch (error) {
+              console.error('Error in private chat messages callback:', error);
+            }
+          });
+        }
       }, (error) => {
         console.error('Error listening to private chat messages:', error);
-        callback([]);
+        const listener = this.activeListeners.get(chatId);
+        if (listener) {
+          listener.callbacks.forEach(cb => {
+            try {
+              cb([]);
+            } catch (error) {
+              console.error('Error in private chat messages error callback:', error);
+            }
+          });
+        }
+      });
+      
+      // Store the listener with its callbacks
+      this.activeListeners.set(chatId, {
+        unsubscribe,
+        callbacks: new Set([callback])
       });
       
       this.unsubscribeFns.add(unsubscribe);
       return () => {
-        try { unsubscribe(); } catch (_) {}
-        this.unsubscribeFns.delete(unsubscribe);
+        const listener = this.activeListeners.get(chatId);
+        if (listener) {
+          listener.callbacks.delete(callback);
+          if (listener.callbacks.size === 0) {
+            // No more callbacks, clean up the listener
+            try { 
+              listener.unsubscribe(); 
+              this.unsubscribeFns.delete(listener.unsubscribe);
+            } catch (_) {}
+            this.activeListeners.delete(chatId);
+          }
+        }
       };
     } catch (error) {
       console.error('Error setting up private chat messages listener:', error);
@@ -3933,27 +3985,28 @@ class FirebaseService {
   cleanup() {
     console.log('🧹 Cleaning up Firebase service...');
     
-    // Clean up all unsubscribe functions
+    // Clean up all active listeners
+    if (this.activeListeners) {
+      this.activeListeners.forEach((listener, chatId) => {
+        try {
+          listener.unsubscribe();
+          console.log('🧹 Cleaned up listener for chat:', chatId);
+        } catch (error) {
+          console.warn('Error cleaning up listener for chat:', chatId, error);
+        }
+      });
+      this.activeListeners.clear();
+    }
+    
+    // Clean up other unsubscribe functions
     this.unsubscribeFns.forEach(unsubscribe => {
       try {
         unsubscribe();
       } catch (error) {
         console.warn('Error during cleanup:', error);
-      }
+        }
     });
     this.unsubscribeFns.clear();
-    
-    // Clean up active listeners
-    if (this.activeListeners) {
-      this.activeListeners.forEach((unsubscribe, key) => {
-        try {
-          unsubscribe();
-        } catch (error) {
-          console.warn('Error cleaning up listener:', key, error);
-        }
-      });
-      this.activeListeners.clear();
-    }
     
     console.log('✅ Firebase service cleanup completed');
   }
