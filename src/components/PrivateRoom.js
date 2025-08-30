@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import firebaseService from '../lib/firebase';
 import ContentModeration from './ContentModeration';
 import { isMessageClean } from '../lib/contentFilter';
 import MessageStatus from './MessageStatus';
+import { clearMessageNotifications } from '../lib/notifications';
+import { runPerformanceComparison } from '../lib/performanceTest';
 
 const PrivateRoom = (props) => {
   const { username, onLeaveRoom } = props;
@@ -27,44 +29,56 @@ const PrivateRoom = (props) => {
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [showContentModeration, setShowContentModeration] = useState(false);
   const [moderationMessage, setModerationMessage] = useState('');
+  const scrollTimeoutRef = useRef(null);
+  const lastScrollTopRef = useRef(0);
   const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
-  const focusInput = () => {
-    if (!isDesktop) return;
-    if (typeof window !== 'undefined' && window.__modalOpen) return;
-    const el = inputRef.current;
-    if (!el) return;
-    if (document.activeElement !== el) {
-      try { el.focus({ preventScroll: true }); } catch (_) { el.focus(); }
-    }
-  };
+  const isMobile = typeof window !== 'undefined' && (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Check if user is at the bottom of the chat
-  const isAtBottom = () => {
+  // Check if user is at the bottom of the chat with mobile-optimized threshold
+  const isAtBottom = useCallback(() => {
     if (!messagesContainerRef.current) return true;
     const container = messagesContainerRef.current;
-    const threshold = 100; // 100px threshold to consider "at bottom"
+    // Increase threshold for mobile devices to prevent accidental auto-scroll
+    const threshold = isMobile ? 150 : 100;
     return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
-  };
+  }, [isMobile]);
 
-  // Handle scroll events to detect user scrolling
-  const handleScroll = () => {
-    if (messagesContainerRef.current) {
-      const atBottom = isAtBottom();
-      setShouldAutoScroll(atBottom);
-      setIsUserScrolling(!atBottom);
+  // Debounced scroll handler to prevent rapid state changes
+  const handleScroll = useCallback(() => {
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
     }
-  };
+
+    scrollTimeoutRef.current = setTimeout(() => {
+      if (messagesContainerRef.current) {
+        const container = messagesContainerRef.current;
+        const currentScrollTop = container.scrollTop;
+        const atBottom = isAtBottom();
+        
+        // Only update state if there's a meaningful change (prevents micro-adjustments)
+        const scrollChanged = Math.abs(currentScrollTop - lastScrollTopRef.current) > 5;
+        
+        if (scrollChanged) {
+          setShouldAutoScroll(atBottom);
+          setIsUserScrolling(!atBottom);
+          lastScrollTopRef.current = currentScrollTop;
+        }
+      }
+    }, 100); // 100ms debounce for smooth experience
+  }, [isAtBottom]);
 
   // Smart scroll that only auto-scrolls when appropriate
-  const smartScrollToBottom = () => {
+  const smartScrollToBottom = useCallback(() => {
     if (shouldAutoScroll) {
       scrollToBottom();
     }
-  };
+  }, [shouldAutoScroll]);
 
   // Handle when user manually scrolls to bottom
   const handleScrollToBottom = () => {
@@ -72,6 +86,28 @@ const PrivateRoom = (props) => {
     setIsUserScrolling(false);
     scrollToBottom();
   };
+
+  // Store current scroll position before messages update
+  const preserveScrollPosition = useCallback(() => {
+    if (messagesContainerRef.current && !shouldAutoScroll) {
+      const container = messagesContainerRef.current;
+      const currentScrollTop = container.scrollTop;
+      const currentScrollHeight = container.scrollHeight;
+      
+      // Store the position relative to the bottom
+      const distanceFromBottom = currentScrollHeight - currentScrollTop;
+      
+      // Return a function to restore the position
+      return () => {
+        if (container && !shouldAutoScroll) {
+          const newScrollHeight = container.scrollHeight;
+          const newScrollTop = newScrollHeight - distanceFromBottom;
+          container.scrollTop = newScrollTop;
+        }
+      };
+    }
+    return null;
+  }, [shouldAutoScroll]);
 
   const handleCopyCode = async () => {
     try {
@@ -123,7 +159,27 @@ const PrivateRoom = (props) => {
     }
 
     const unsubscribeMessages = firebaseService.onRoomMessagesUpdate(room.roomId, (messageList) => {
+      // Preserve scroll position before updating messages
+      const restoreScroll = preserveScrollPosition();
+      
       setMessages(messageList);
+      
+      // Restore scroll position after state update
+      if (restoreScroll) {
+        // Use requestAnimationFrame to ensure DOM is updated
+        requestAnimationFrame(() => {
+          restoreScroll();
+        });
+      }
+      
+      // Clear notifications when room messages are loaded
+      if (messageList.length > 0) {
+        try {
+          clearMessageNotifications(username, room.roomId, 'room');
+        } catch (error) {
+          console.error('Error clearing room message notifications:', error);
+        }
+      }
     });
     const unsubscribeUsers = firebaseService.onRoomUsersUpdate(room.roomId, (userList) => {
       setRoomUsers(userList);
@@ -163,9 +219,14 @@ const PrivateRoom = (props) => {
   useEffect(() => {
     // Only auto-scroll if user is at bottom or if this is the first load
     if (messages.length > 0 && shouldAutoScroll) {
-      smartScrollToBottom();
+      // Add a small delay for mobile devices to ensure smooth scrolling
+      const delay = isMobile ? 150 : 100;
+      const timer = setTimeout(() => {
+        smartScrollToBottom();
+      }, delay);
+      return () => clearTimeout(timer);
     }
-  }, [messages, shouldAutoScroll]);
+  }, [messages, shouldAutoScroll, smartScrollToBottom, isMobile]);
 
   // Add a more robust scroll mechanism for new messages
   useEffect(() => {
@@ -178,27 +239,41 @@ const PrivateRoom = (props) => {
     }
   }, [messages.length, shouldAutoScroll]);
 
-  // Desktop: keep the input focused so users can type next message immediately
-  useEffect(() => {
-    if (isDesktop) {
-      focusInput();
-    }
-  }, [isDesktop]);
+
 
   // Add scroll event listener to detect user scrolling
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (container) {
       container.addEventListener('scroll', handleScroll);
-      return () => container.removeEventListener('scroll', handleScroll);
+      // Add touch events for mobile devices
+      container.addEventListener('touchstart', handleScroll);
+      container.addEventListener('touchmove', handleScroll);
+      container.addEventListener('touchend', handleScroll);
+      
+      return () => {
+        container.removeEventListener('scroll', handleScroll);
+        container.removeEventListener('touchstart', handleScroll);
+        container.removeEventListener('touchmove', handleScroll);
+        container.removeEventListener('touchend', handleScroll);
+        // Clean up timeout to prevent memory leaks
+        if (scrollTimeoutRef.current) {
+          clearTimeout(scrollTimeoutRef.current);
+        }
+      };
     }
+  }, [handleScroll]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
   }, []);
 
-  useEffect(() => {
-    if (isDesktop) {
-      focusInput();
-    }
-  }, [messages.length]);
+
 
   // Private rooms don't need spam protection - always allow messages
   // No spam protection needed for private rooms
@@ -249,10 +324,14 @@ const PrivateRoom = (props) => {
       setMessages(prev => prev.filter(msg => !msg.isOptimistic));
     } finally {
       setIsSending(false);
+      // Restore focus on desktop devices after sending message
       if (isDesktop) {
-        focusInput();
-        setTimeout(focusInput, 0);
-        setTimeout(focusInput, 100);
+        // Use a short delay to ensure the DOM has updated
+        setTimeout(() => {
+          if (inputRef.current && !editingMessage) {
+            inputRef.current.focus();
+          }
+        }, 50);
       }
     }
   };
@@ -277,7 +356,7 @@ const PrivateRoom = (props) => {
     setIsSending(true);
     
     try {
-      // Create optimistic message (like public chat)
+      // Create optimistic message (like public chat) - ADD IMMEDIATELY
       const optimisticMessage = {
         id: `temp_${Date.now()}`,
         roomId: room.roomId,
@@ -287,10 +366,10 @@ const PrivateRoom = (props) => {
         isOptimistic: true
       };
 
-      // Add to local state immediately (like public chat)
+      // Add to local state IMMEDIATELY for instant feedback (like public chat)
       setMessages(prev => [...prev, optimisticMessage]);
 
-      // Send to Firebase
+      // Send to Firebase (now optimized to be non-blocking)
       await firebaseService.sendRoomMessage(room.roomId, username, messageToSend);
 
       // Remove optimistic message and let Firebase update handle the real message
@@ -307,9 +386,19 @@ const PrivateRoom = (props) => {
     } finally {
       setIsSending(false);
       if (isDesktop) {
-        focusInput();
-        setTimeout(focusInput, 0);
-        setTimeout(focusInput, 100);
+        if (inputRef.current && !editingMessage) {
+          inputRef.current.focus();
+        }
+        setTimeout(() => {
+          if (inputRef.current && !editingMessage) {
+            inputRef.current.focus();
+          }
+        }, 0);
+        setTimeout(() => {
+          if (inputRef.current && !editingMessage) {
+            inputRef.current.focus();
+          }
+        }, 100);
       }
     }
   };
@@ -382,18 +471,82 @@ const PrivateRoom = (props) => {
     }
   };
 
+  const handleUnsend = async (messageId) => {
+    console.log('Attempting to unsend message:', messageId);
+    console.log('Current user:', username);
+    console.log('All messages:', messages);
+    
+    // Find the message to verify it exists and belongs to current user
+    const messageToDelete = messages.find(m => m.id === messageId);
+    if (!messageToDelete) {
+      alert('Message not found');
+      return;
+    }
+    
+    if (messageToDelete.username !== username) {
+      alert('You can only unsend your own messages');
+      return;
+    }
+    
+    // Prevent unsending optimistic messages
+    if (messageToDelete.isOptimistic) {
+      alert('Cannot unsend a message that is still being sent');
+      return;
+    }
+    
+    try {
+      console.log('Message to delete:', messageToDelete);
+      console.log('Message ID type:', typeof messageId);
+      console.log('Message ID value:', messageId);
+      
+      // OPTIMISTIC UI UPDATE: Remove message immediately for instant feedback
+      setMessages(prev => prev.filter(msg => msg.id !== messageId));
+      
+      // Ensure Firebase is initialized
+      if (firebaseService.initialize) {
+        await firebaseService.initialize();
+      }
+      
+      await firebaseService.deleteRoomMessage(messageId);
+      console.log('Message unsent successfully');
+    } catch (error) {
+      console.error('Error unsending message:', error);
+      
+      // REVERT OPTIMISTIC UPDATE on error: Add the message back to the UI
+      if (messageToDelete) {
+        setMessages(prev => [...prev, messageToDelete]);
+      }
+      
+      // Provide more user-friendly error messages
+      let errorMessage = 'Failed to unsend message';
+      if (error.message.includes('Message not found')) {
+        errorMessage = 'Message not found or already deleted';
+      } else if (error.message.includes('You can only delete your own messages')) {
+        errorMessage = 'You can only unsend your own messages';
+      } else if (error.message.includes('Failed to authenticate')) {
+        errorMessage = 'Authentication error. Please refresh the page and try again.';
+      } else {
+        errorMessage = error.message;
+      }
+      
+      alert(errorMessage);
+    }
+  };
+
   const [copiedMessageId, setCopiedMessageId] = useState(null);
 
   return (
-         <div className="flex h-full bg-gray-900/50 relative">
-       {/* Content Moderation Modal */}
-       <ContentModeration
-         message={moderationMessage}
-         isVisible={showContentModeration}
-         onClose={closeContentModeration}
-         onSend={handleModeratedSend}
-         showWarning={true}
-       />
+    <div 
+      className="flex h-full bg-gray-900/50 relative private-room-container"
+    >
+      {/* Content Moderation Modal */}
+      <ContentModeration
+        message={moderationMessage}
+        isVisible={showContentModeration}
+        onClose={closeContentModeration}
+        onSend={handleModeratedSend}
+        showWarning={true}
+      />
        
                                        {/* Backdrop overlay - Visible on all screen sizes when sidebar is open */}
         {isMembersOpen && (
@@ -442,12 +595,22 @@ const PrivateRoom = (props) => {
            </div>
            <div className="flex items-center justify-between pt-3 border-t border-gray-700/30">
              <span className="text-gray-400/70 text-sm font-medium">{roomUsers.length} members</span>
-             <button
-               onClick={handleLeaveClick}
-               className="text-red-400/70 hover:text-red-300 text-sm font-medium transition-all duration-200 px-3 py-1.5 rounded-lg hover:bg-red-900/20"
-             >
-               Leave Room
-             </button>
+             <div className="flex items-center space-x-2">
+               {/* Performance Test Button */}
+               <button
+                 onClick={() => runPerformanceComparison(firebaseService, username, room.roomId)}
+                 className="text-blue-400/70 hover:text-blue-300 text-xs font-medium transition-all duration-200 px-2 py-1 rounded-lg hover:bg-blue-900/20"
+                 title="Test message sending performance"
+               >
+                 ⚡ Speed Test
+               </button>
+               <button
+                 onClick={handleLeaveClick}
+                 className="text-red-400/70 hover:text-red-300 text-sm font-medium transition-all duration-200 px-3 py-1.5 rounded-lg hover:bg-red-900/20"
+               >
+                 Leave Room
+               </button>
+             </div>
            </div>
          </div>
 
@@ -602,34 +765,58 @@ const PrivateRoom = (props) => {
                           />
                         </div>
                         
-                        {/* Action buttons for current user's messages */}
-                        {isCurrentUser(message.username) && (
-                          <div className="absolute -top-2 -left-2 opacity-0 group-hover:opacity-100 transition-all duration-200 flex space-x-1">
-                            {/* Copy button */}
-                            <button
-                              onClick={() => handleCopyText(message.message, message.id)}
-                              className="bg-gray-700/80 hover:bg-gray-600/80 text-gray-300 hover:text-white p-2 rounded-full border border-gray-600/50 hover:border-gray-500/50 transition-all duration-200 shadow-lg"
-                              title={copiedMessageId === message.id ? 'Copied!' : 'Copy text'}
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                              </svg>
-                            </button>
-                            {/* Edit button */}
-                            <button
-                              onClick={() => {
-                                setEditingMessage(message.id);
-                                setEditText(message.message);
-                              }}
-                              className="bg-gray-700/80 hover:bg-gray-600/80 text-gray-300 hover:text-white p-2 rounded-full border border-gray-600/50 hover:border-gray-500/50 transition-all duration-200 shadow-lg"
-                              title="Edit message"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
+                        {/* Message Actions - CSS hover based (same as PublicChat and PrivateChat) */}
+                        <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none group-hover:pointer-events-auto" 
+                             style={{
+                               top: '-8px',
+                               left: isCurrentUser(message.username) ? 'auto' : '-8px',
+                               right: isCurrentUser(message.username) ? '-8px' : 'auto',
+                               zIndex: 99999
+                             }}>
+                          <div className="backdrop-blur-sm border border-gray-600/50 rounded-lg shadow-2xl p-2" style={{ minWidth: '160px', backgroundColor: '#303030' }}>
+                            <div className="flex flex-col space-y-1">
+                              {/* Copy Text Button */}
+                              <button
+                                onClick={() => handleCopyText(message.message, message.id)}
+                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-md transition-colors duration-150"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                                <span>{copiedMessageId === message.id ? 'Copied!' : 'Copy Text'}</span>
+                              </button>
+
+                              {/* Edit Button - Only show for current user's messages */}
+                              {isCurrentUser(message.username) && (
+                                <button
+                                  onClick={() => {
+                                    setEditingMessage(message.id);
+                                    setEditText(message.message);
+                                  }}
+                                  className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-md transition-colors duration-150"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                  </svg>
+                                  <span>Edit</span>
+                                </button>
+                              )}
+
+                              {/* Unsend Button - Only show for current user's messages */}
+                              {isCurrentUser(message.username) && (
+                                <button
+                                  onClick={() => handleUnsend(message.id)}
+                                  className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-600/20 rounded-md transition-colors duration-150"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                  <span>Unsend</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -645,7 +832,6 @@ const PrivateRoom = (props) => {
         <div 
           className="backdrop-blur-sm p-4 lg:p-6 flex-shrink-0 sticky bottom-0 z-50"
           style={{ backgroundColor: '#303030' }}
-          onClick={() => { inputRef.current?.focus(); }}
         >
           <form onSubmit={handleSendMessage} className="flex space-x-3">
             <input
@@ -658,7 +844,28 @@ const PrivateRoom = (props) => {
               style={{ backgroundColor: '#202020' }}
               ref={inputRef}
               autoFocus={isDesktop}
-              onBlur={() => { if (isDesktop) setTimeout(focusInput, 0); }}
+              onBlur={(e) => { 
+                // Only restore focus on desktop if we're not editing a message
+                // and if the blur is not caused by clicking outside the chat area
+                if (isDesktop && !editingMessage) {
+                  const chatArea = e.currentTarget.closest('.private-room-container');
+                  const relatedTarget = e.relatedTarget;
+                  
+                  // Check if the blur is caused by clicking outside the chat area
+                  if (chatArea && (!relatedTarget || !chatArea.contains(relatedTarget))) {
+                    // User clicked outside the chat area - don't restore focus
+                    return;
+                  }
+                  
+                  // For internal interactions, restore focus after a short delay
+                  // This allows other elements to be clicked without interference
+                  setTimeout(() => {
+                    if (inputRef.current && !editingMessage && document.activeElement !== inputRef.current) {
+                      inputRef.current.focus();
+                    }
+                  }, 100);
+                }
+              }}
             />
             <button
               type="submit"

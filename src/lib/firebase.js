@@ -90,13 +90,15 @@ const COLLECTIONS = {
   REMOVAL_NOTIFICATIONS: 'removalNotifications'
 };
 
-// Spam protection configuration
+// Spam protection configuration - OPTIMIZED FOR PERFORMANCE
 const SPAM_CONFIG = {
-  MAX_MESSAGES: 10, // Increased from 5
-  RAPID_THRESHOLD: 5, // Increased from 3
-  RAPID_TIME_WINDOW: 15000, // Increased from 10 seconds to 15 seconds
-  MIN_INTERVAL: 1000, // Reduced from 2 seconds to 1 second
-  COOLDOWN_PERIOD: 15000 // Reduced from 30 seconds to 15 seconds
+  MAX_MESSAGES: 15, // Increased from 10 for better user experience
+  RAPID_THRESHOLD: 8, // Increased from 5
+  RAPID_TIME_WINDOW: 20000, // Increased from 15 seconds to 20 seconds
+  MIN_INTERVAL: 500, // Reduced from 1 second to 0.5 seconds for faster messaging
+  COOLDOWN_PERIOD: 10000, // Reduced from 15 seconds to 10 seconds
+  ENABLED: true, // Enable/disable spam protection globally
+  SKIP_FOR_PRIVATE_CHATS: true // Skip spam check for private chats for better performance
 };
 
 // In-memory spam tracking
@@ -447,63 +449,88 @@ class FirebaseService {
   }
 
   /**
-   * Send room message with UID tracking
+   * Send room message with UID tracking - OPTIMIZED VERSION
    */
-  async sendRoomMessage(roomId, username, message) {
+  async sendRoomMessage(roomId, username, message, replyTo = null) {
     try {
-      // Ensure we have an authenticated user
-      let current = auth.currentUser;
-      if (!current) {
-        console.log('No authenticated user, attempting to initialize Firebase');
-        await this.initialize();
-        current = auth.currentUser;
-        if (!current) throw new Error('Failed to authenticate user');
-      }
+      const current = auth.currentUser;
+      if (!current) throw new Error('No authenticated user');
+
+      console.log('Sending room message:', { roomId, username, message, uid: current.uid, replyTo });
 
       const messageRef = doc(collection(db, COLLECTIONS.ROOM_MESSAGES));
+      const roomRef = doc(db, COLLECTIONS.ROOMS, roomId);
+      
+      // Create message data
       const messageData = {
         id: messageRef.id,
         roomId,
-        uid: current.uid, // CRITICAL: Link to Auth UID
+        uid: current.uid,
         username,
         message,
         timestamp: serverTimestamp(),
-        status: 'sent' // Initial status
+        status: 'sent',
+        replyTo: replyTo ? {
+          id: replyTo.id,
+          username: replyTo.username,
+          message: replyTo.message
+        } : null
       };
-      
-      console.log('Attempting to send room message with data:', messageData);
-      await setDoc(messageRef, messageData);
-      console.log('Room message sent successfully');
+
+      // Use batch operations for better performance
+      const batch = writeBatch(db);
+      batch.set(messageRef, messageData);
+      batch.update(roomRef, {
+        lastMessageAt: serverTimestamp(),
+        lastMessage: message.substring(0, 100) // Store message preview
+      });
+
+      // Commit batch operations
+      await batch.commit();
+
+      console.log('Room message sent successfully:', messageRef.id);
+
+      // Create notification in parallel (non-blocking)
+      this.createRoomMessageNotificationAsync(roomId, username, message);
+
       return messageRef.id;
     } catch (error) {
       console.error('Error sending room message:', error);
-      
-      // If it's a permission error, try to re-authenticate
-      if (error.code === 'permission-denied' || error.message.includes('permissions')) {
-        try {
-          console.log('Permission denied, attempting to re-authenticate');
-          await signInAnonymously(auth);
-          const retryCurrent = auth.currentUser;
-          if (retryCurrent) {
-            // Retry sending the message
-            const messageRef = doc(collection(db, COLLECTIONS.ROOM_MESSAGES));
-            await setDoc(messageRef, {
-              id: messageRef.id,
-              roomId,
-              uid: retryCurrent.uid,
-              username,
-              message,
-              timestamp: serverTimestamp(),
-              status: 'sent'
-            });
-            return messageRef.id;
-          }
-        } catch (reauthError) {
-          console.error('Re-authentication failed:', reauthError);
-        }
-      }
-      
       throw error;
+    }
+  }
+
+  /**
+   * Create room message notification asynchronously (non-blocking)
+   */
+  async createRoomMessageNotificationAsync(roomId, username, message) {
+    try {
+      // Get room participants to create notifications
+      const roomRef = doc(db, COLLECTIONS.ROOMS, roomId);
+      const roomDoc = await getDoc(roomRef);
+      
+      if (roomDoc.exists()) {
+        const roomData = roomDoc.data();
+        const participants = roomData.participants || [];
+        
+        // Create notifications for all participants except sender (non-blocking)
+        const notificationPromises = participants
+          .filter(p => p !== username)
+          .map(async (recipientUsername) => {
+            try {
+              const { createMessageReceivedNotification } = await import('./notifications');
+              return await createMessageReceivedNotification(roomId, username, recipientUsername, message, 'room');
+            } catch (error) {
+              console.error('Error creating room notification for:', recipientUsername, error);
+              return null;
+            }
+          });
+
+        // Wait for all notifications to complete (but don't block message sending)
+        Promise.allSettled(notificationPromises);
+      }
+    } catch (error) {
+      console.error('Error in async room notification creation:', error);
     }
   }
 
@@ -524,6 +551,35 @@ class FirebaseService {
       return true;
     } catch (error) {
       console.error('Error editing room message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark all messages in a room as read for a user
+   */
+  async markAllRoomMessagesAsRead(roomId, username) {
+    try {
+      const q = query(
+        collection(db, COLLECTIONS.ROOM_MESSAGES),
+        where('roomId', '==', roomId),
+        where('username', '!=', username) // Only mark other users' messages as read
+      );
+      
+      const snapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      
+      snapshot.forEach((doc) => {
+        batch.update(doc.ref, {
+          status: 'read',
+          readAt: serverTimestamp()
+        });
+      });
+      
+      await batch.commit();
+      console.log(`Marked ${snapshot.size} room messages as read for user: ${username}`);
+    } catch (error) {
+      console.error('Error marking room messages as read:', error);
       throw error;
     }
   }
@@ -1357,7 +1413,10 @@ class FirebaseService {
       console.log('Sending private message:', { chatId, username, message, uid: current.uid, replyTo });
 
       const messageRef = doc(collection(db, COLLECTIONS.PRIVATE_MESSAGES));
-      await setDoc(messageRef, {
+      const chatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, chatId);
+      
+      // Create message data
+      const messageData = {
         id: messageRef.id,
         chatId,
         uid: current.uid,
@@ -1370,25 +1429,46 @@ class FirebaseService {
           username: replyTo.username,
           message: replyTo.message
         } : null
-      });
+      };
 
-      console.log('Private message sent successfully:', messageRef.id);
-
-      // Update last message timestamp
-      const chatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, chatId);
-      await updateDoc(chatRef, {
+      // Use batch operations for better performance
+      const batch = writeBatch(db);
+      batch.set(messageRef, messageData);
+      batch.update(chatRef, {
         lastMessageAt: serverTimestamp()
       });
 
+      // Commit batch operations
+      await batch.commit();
+
+      console.log('Private message sent successfully:', messageRef.id);
+
+      // Get chat participants and create notification in parallel (non-blocking)
+      this.createMessageNotificationAsync(chatId, username, message);
+
+      return messageRef.id;
+    } catch (error) {
+      console.error('Error sending private message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create message notification asynchronously (non-blocking)
+   */
+  async createMessageNotificationAsync(chatId, username, message) {
+    try {
       // Get chat participants to determine recipient
+      const chatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, chatId);
       const chatDoc = await getDoc(chatRef);
+      
       if (chatDoc.exists()) {
         const chatData = chatDoc.data();
         const participants = chatData.participants || [];
         const recipientUsername = participants.find(p => p !== username);
         
         if (recipientUsername) {
-          // Create notification for message received
+          // Create notification for message received (non-blocking)
           try {
             const { createMessageReceivedNotification } = await import('./notifications');
             await createMessageReceivedNotification(chatId, username, recipientUsername, message);
@@ -1397,11 +1477,8 @@ class FirebaseService {
           }
         }
       }
-
-      return messageRef.id;
     } catch (error) {
-      console.error('Error sending private message:', error);
-      throw error;
+      console.error('Error in async notification creation:', error);
     }
   }
 
@@ -2003,9 +2080,14 @@ class FirebaseService {
   }
 
   /**
-   * Check if message is spam
+   * Check if message is spam - OPTIMIZED VERSION
    */
   checkSpam(username) {
+    // Skip spam check if disabled globally
+    if (!SPAM_CONFIG.ENABLED) {
+      return { allowed: true };
+    }
+    
     const now = Date.now();
     
     if (!spamTracker.has(username)) {
@@ -2017,16 +2099,18 @@ class FirebaseService {
         isBlocked: false,
         blockUntil: 0
       });
+      return { allowed: true }; // Fast path for new users
     }
     
     const userData = spamTracker.get(username);
     
-    console.log('Spam check for user:', username, 'User data:', userData);
+    // Remove console.log for better performance
+    // console.log('Spam check for user:', username, 'User data:', userData);
     
-    // Check if user is blocked
+    // Check if user is blocked (fast path)
     if (userData.isBlocked && now < userData.blockUntil) {
       const cooldown = Math.ceil((userData.blockUntil - now) / 1000);
-      console.log('User is blocked, cooldown remaining:', cooldown, 'seconds');
+      // console.log('User is blocked, cooldown remaining:', cooldown, 'seconds');
       return { allowed: false, reason: `You are blocked from sending messages. Please wait ${cooldown} seconds.` };
     }
     
@@ -2048,16 +2132,93 @@ class FirebaseService {
       userData.lastRapidTime = null;
     }
     
-    // Update message history
+    // Update message history more efficiently
     userData.messageHistory.push(now);
     userData.lastMessageTime = now;
     
-    // Keep only recent messages (last 30 seconds)
-    userData.messageHistory = userData.messageHistory.filter(
-      time => (now - time) < 30000
-    );
+    // Optimize message history filtering - only filter when necessary
+    if (userData.messageHistory.length > 30) {
+      // Only filter when we have more than 30 messages to avoid unnecessary work
+      userData.messageHistory = userData.messageHistory.filter(
+        time => (now - time) < 30000
+      );
+    }
     
     return { allowed: true };
+  }
+
+  /**
+   * Fast spam check for private chats - skips heavy operations
+   */
+  checkSpamFast(username) {
+    // Skip spam check if disabled globally or for private chats
+    if (!SPAM_CONFIG.ENABLED || SPAM_CONFIG.SKIP_FOR_PRIVATE_CHATS) {
+      return { allowed: true };
+    }
+    
+    const now = Date.now();
+    
+    if (!spamTracker.has(username)) {
+      spamTracker.set(username, {
+        messageHistory: [],
+        rapidMessageCount: 0,
+        lastMessageTime: now,
+        lastRapidTime: null,
+        isBlocked: false,
+        blockUntil: 0
+      });
+      return { allowed: true };
+    }
+    
+    const userData = spamTracker.get(username);
+    
+    // Only check if user is blocked (fastest path)
+    if (userData.isBlocked && now < userData.blockUntil) {
+      const cooldown = Math.ceil((userData.blockUntil - now) / 1000);
+      return { allowed: false, reason: `You are blocked from sending messages. Please wait ${cooldown} seconds.` };
+    }
+    
+    // Update only essential data for private chats
+    userData.lastMessageTime = now;
+    
+    return { allowed: true };
+  }
+
+  /**
+   * Completely disable spam protection for private chats
+   */
+  disableSpamProtectionForPrivateChats() {
+    SPAM_CONFIG.SKIP_FOR_PRIVATE_CHATS = true;
+    console.log('Spam protection disabled for private chats');
+  }
+
+  /**
+   * Enable spam protection for private chats
+   */
+  enableSpamProtectionForPrivateChats() {
+    SPAM_CONFIG.SKIP_FOR_PRIVATE_CHATS = false;
+    console.log('Spam protection enabled for private chats');
+  }
+
+  /**
+   * Test spam check performance
+   */
+  testSpamCheckPerformance(username, iterations = 1000) {
+    const startTime = performance.now();
+    
+    for (let i = 0; i < iterations; i++) {
+      this.checkSpam(username);
+    }
+    
+    const endTime = performance.now();
+    const totalTime = endTime - startTime;
+    const avgTime = totalTime / iterations;
+    
+    console.log(`Spam check performance test (${iterations} iterations):`);
+    console.log(`Total time: ${totalTime.toFixed(2)}ms`);
+    console.log(`Average time per check: ${avgTime.toFixed(4)}ms`);
+    
+    return { totalTime, avgTime };
   }
 
   /**
@@ -2740,8 +2901,14 @@ class FirebaseService {
    */
   async deleteRoomMessage(messageId) {
     try {
-      const current = auth.currentUser;
-      if (!current) throw new Error('No authenticated user');
+      // Ensure we have an authenticated user
+      let current = auth.currentUser;
+      if (!current) {
+        console.log('No authenticated user, attempting to initialize Firebase');
+        await this.initialize();
+        current = auth.currentUser;
+        if (!current) throw new Error('Failed to authenticate user');
+      }
 
       const messageRef = doc(db, COLLECTIONS.ROOM_MESSAGES, messageId);
       const messageDoc = await getDoc(messageRef);
@@ -2754,6 +2921,7 @@ class FirebaseService {
       
       // Only allow users to delete their own messages
       if (messageData.uid !== current.uid) {
+        console.error('UID mismatch:', { messageUid: messageData.uid, currentUid: current.uid });
         throw new Error('You can only delete your own messages');
       }
 
@@ -2910,8 +3078,232 @@ class FirebaseService {
       throw error;
     }
   }
+
+  /**
+   * Mark all messages in a room as read for a user
+   */
+  async markAllRoomMessagesAsRead(roomId, username) {
+    try {
+      const q = query(
+        collection(db, COLLECTIONS.ROOM_MESSAGES),
+        where('roomId', '==', roomId),
+        where('username', '!=', username) // Only mark other users' messages as read
+      );
+      
+      const snapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      
+      snapshot.forEach((doc) => {
+        batch.update(doc.ref, {
+          status: 'read',
+          readAt: serverTimestamp()
+        });
+      });
+      
+      await batch.commit();
+      console.log(`Marked ${snapshot.size} room messages as read for user: ${username}`);
+    } catch (error) {
+      console.error('Error marking room messages as read:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark private message as read
+   */
+  async markPrivateMessageAsRead(messageId) {
+    try {
+      const messageRef = doc(db, COLLECTIONS.PRIVATE_MESSAGES, messageId);
+      await updateDoc(messageRef, {
+        status: 'read',
+        readAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error marking message as read:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * SECURITY: Validate if a user has access to a private chat
+   * This prevents unauthorized access to private chats via URL manipulation
+   */
+  async validateChatAccess(chatId, username) {
+    try {
+      if (!chatId || !username) {
+        console.warn('Invalid parameters for chat access validation:', { chatId, username });
+        return false;
+      }
+
+      console.log('Validating chat access:', { chatId, username });
+      
+      // Get the chat document
+      const chatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, chatId);
+      const chatDoc = await getDoc(chatRef);
+      
+      if (!chatDoc.exists()) {
+        console.warn('Chat does not exist:', chatId);
+        return false;
+      }
+      
+      const chatData = chatDoc.data();
+      
+      // Check if the user is a participant in this chat
+      if (!chatData.participants || !Array.isArray(chatData.participants)) {
+        console.warn('Invalid chat data - no participants array:', chatData);
+        return false;
+      }
+      
+      const hasAccess = chatData.participants.includes(username);
+      console.log('Chat access validation result:', { chatId, username, hasAccess, participants: chatData.participants });
+      
+      return hasAccess;
+      
+    } catch (error) {
+      console.error('Error validating chat access:', error);
+      // On error, deny access for security
+      return false;
+    }
+  }
+
+  /**
+   * Get private chat data for a validated chat
+   * This should only be called after validateChatAccess returns true
+   */
+  async getPrivateChatData(chatId) {
+    try {
+      if (!chatId) {
+        console.warn('No chatId provided for getPrivateChatData');
+        return null;
+      }
+
+      console.log('Getting private chat data for:', chatId);
+      
+      // Get the chat document
+      const chatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, chatId);
+      const chatDoc = await getDoc(chatRef);
+      
+      if (!chatDoc.exists()) {
+        console.warn('Chat does not exist:', chatId);
+        return null;
+      }
+      
+      const chatData = chatDoc.data();
+      
+      // Format the chat data for the app
+      const formattedChat = {
+        chatId: chatId,
+        participants: chatData.participants || [],
+        participantUids: chatData.participantUids || [],
+        createdAt: chatData.createdAt,
+        lastMessageAt: chatData.lastMessageAt
+      };
+      
+      // Find the other participant (not the current user)
+      const currentUsername = auth.currentUser?.displayName;
+      if (currentUsername && formattedChat.participants.length === 2) {
+        const otherUsername = formattedChat.participants.find(p => p !== currentUsername);
+        formattedChat.otherUsername = otherUsername;
+      }
+      
+      console.log('Formatted chat data:', formattedChat);
+      return formattedChat;
+      
+    } catch (error) {
+      console.error('Error getting private chat data:', error);
+      return null;
+    }
+  }
+
+  /**
+   * SECURITY: Validate if a user has access to a private room
+   * This prevents unauthorized access to private rooms via URL manipulation
+   */
+  async validateRoomAccess(roomId, username) {
+    try {
+      if (!roomId || !username) {
+        console.warn('Invalid parameters for room access validation:', { roomId, username });
+        return false;
+      }
+
+      console.log('Validating room access:', { roomId, username });
+      
+      // Get the room document
+      const roomRef = doc(db, COLLECTIONS.ROOMS, roomId);
+      const roomDoc = await getDoc(roomRef);
+      
+      if (!roomDoc.exists()) {
+        console.warn('Room does not exist:', roomId);
+        return false;
+      }
+      
+      const roomData = roomDoc.data();
+      
+      // Check if the user is a member of this room
+      if (!roomData.members || !Array.isArray(roomData.members)) {
+        console.warn('Invalid room data - no members array:', roomData);
+        return false;
+      }
+      
+      const hasAccess = roomData.members.includes(username);
+      console.log('Room access validation result:', { roomId, username, hasAccess, members: roomData.members });
+      
+      return hasAccess;
+      
+    } catch (error) {
+      console.error('Error validating room access:', error);
+      // On error, deny access for security
+      return false;
+    }
+  }
+
+  /**
+   * Get room data for a validated room
+   * This should only be called after validateRoomAccess returns true
+   */
+  async getRoomData(roomId) {
+    try {
+      if (!roomId) {
+        console.warn('No roomId provided for getRoomData');
+        return null;
+      }
+
+      console.log('Getting room data for:', roomId);
+      
+      // Get the room document
+      const roomRef = doc(db, COLLECTIONS.ROOMS, roomId);
+      const roomDoc = await getDoc(roomRef);
+      
+      if (!roomDoc.exists()) {
+        console.warn('Room does not exist:', roomId);
+        return null;
+      }
+      
+      const roomData = roomDoc.data();
+      
+      // Format the room data for the app
+      const formattedRoom = {
+        id: roomId,
+        name: roomData.name || 'Unnamed Room',
+        createdBy: roomData.createdBy || 'Unknown',
+        createdByUid: roomData.createdByUid || '',
+        createdAt: roomData.createdAt,
+        members: roomData.members || []
+      };
+      
+      console.log('Formatted room data:', formattedRoom);
+      return formattedRoom;
+      
+    } catch (error) {
+      console.error('Error getting room data:', error);
+      return null;
+    }
+  }
 }
 
 // Create and export service instance
 const firebaseService = new FirebaseService();
 export default firebaseService;
+
+// Export db instance for use in other modules
+export { db };

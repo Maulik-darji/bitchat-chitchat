@@ -6,7 +6,14 @@ export const FILTER_CONFIG = {
   ENABLED: true,
   
   // Enable AI-based moderation for better multi-language support
-  AI_MODERATION_ENABLED: true,
+  // DISABLED TEMPORARILY FOR PERFORMANCE
+  AI_MODERATION_ENABLED: false,
+  
+  // Enable AllProfanity integration for comprehensive profanity detection
+  ALLPROFANITY_ENABLED: true,
+  
+  // Enable ignoring of vulgar words in Hindi, Gujarati, and English
+  IGNORE_VULGAR_WORDS: true,
   
   // Action to take when inappropriate content is detected
   // Options: 'block', 'filter', 'warn'
@@ -51,12 +58,30 @@ export const FILTER_CONFIG = {
 export const CUSTOM_FILTER_RULES = {
   // Add your own custom words here
   ADDITIONAL_WORDS: [
-    // Add any additional words you want to filter
+    // Hindi vulgar words written in English text (Romanized)
+    'madarchod', 'behnchod', 'chutiya', 'rand', 'chut', 'lund', 'gaand', 'bhosda', 
+    'harami', 'behaya', 'randi', 'madar', 'behn', 'bhos', 'haram', 'behay',
+    'chutiye', 'chutiyo', 'chutiyon', 'chutiyon', 'chutiyon', 'chutiyon',
+    
+    // Gujarati vulgar words written in English text (Romanized)
+    'gaandu', 'gaand', 'gaandu', 'gaand', 'gaandu', 'gaand', 'gaandu',
+    
+    // Additional offensive terms
+    'retard', 'retarded', 'idiot', 'stupid', 'dumb', 'moron',
+    'jerk', 'jerkoff', 'douche', 'douchebag', 'scumbag', 'pieceofshit'
   ],
   
   // Add your own custom patterns here
   ADDITIONAL_PATTERNS: [
-    // Add any additional regex patterns you want to filter
+    // Hindi vulgar word patterns with variations
+    /\b(madarchod|behnchod|chutiya|rand|chut|lund|gaand|bhosda|harami|behaya|randi)\b/gi,
+    /\b(madar|behn|bhos|haram|behay)\b/gi,
+    
+    // Gujarati vulgar word patterns
+    /\b(gaandu|gaand)\b/gi,
+    
+    // Mixed case variations
+    /\b[A-Za-z]*(madarchod|behnchod|chutiya|randi)[A-Za-z]*\b/gi
   ],
   
   // Words that should NOT be filtered (whitelist)
@@ -86,6 +111,31 @@ export const CUSTOM_FILTER_RULES = {
 // Language-specific configurations
 export const LANGUAGE_CONFIG = {
   ENGLISH: {
+    ENABLED: true,
+    CUSTOM_WORDS: [],
+    CUSTOM_PATTERNS: []
+  },
+  HINDI: {
+    ENABLED: true,
+    CUSTOM_WORDS: [],
+    CUSTOM_PATTERNS: []
+  },
+  GUJARATI: {
+    ENABLED: true,
+    CUSTOM_WORDS: [],
+    CUSTOM_PATTERNS: []
+  },
+  BENGALI: {
+    ENABLED: true,
+    CUSTOM_WORDS: [],
+    CUSTOM_PATTERNS: []
+  },
+  TAMIL: {
+    ENABLED: true,
+    CUSTOM_WORDS: [],
+    CUSTOM_PATTERNS: []
+  },
+  TELUGU: {
     ENABLED: true,
     CUSTOM_WORDS: [],
     CUSTOM_PATTERNS: []

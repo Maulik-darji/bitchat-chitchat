@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   getUserNotifications, 
   markNotificationAsRead, 
@@ -14,6 +15,7 @@ const NotificationCenter = ({ username, isVisible, onClose }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const modalRef = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!username || !isVisible) return;
@@ -108,6 +110,41 @@ const NotificationCenter = ({ username, isVisible, onClose }) => {
         console.error('Error deleting all notifications:', error);
       }
     }
+  };
+
+  const handleNotificationClick = (notification) => {
+    // Use the actionUrl if available, otherwise construct based on type
+    if (notification.actionUrl) {
+      navigate(notification.actionUrl);
+      onClose();
+      return;
+    }
+    
+    // Fallback navigation based on notification type
+    let url = '/';
+    switch (notification.type) {
+      case NOTIFICATION_TYPES.ROOM_JOIN:
+        url = `/room/${notification.roomId}`;
+        break;
+      case NOTIFICATION_TYPES.INVITE_RECEIVED:
+        url = `/invites`;
+        break;
+      case NOTIFICATION_TYPES.INVITE_ACCEPTED:
+        url = `/room/${notification.roomId}`;
+        break;
+      case NOTIFICATION_TYPES.MESSAGE_RECEIVED:
+        if (notification.messageType === 'room') {
+          url = `/room/${notification.roomId}`;
+        } else {
+          url = `/private-chat/${notification.chatId}`;
+        }
+        break;
+      default:
+        url = '/';
+        break;
+    }
+    navigate(url);
+    onClose();
   };
 
   const getNotificationIcon = (type) => {
@@ -257,11 +294,12 @@ const NotificationCenter = ({ username, isVisible, onClose }) => {
               {notifications.map((notification) => (
                 <div
                   key={notification.id}
-                  className={`p-4 rounded-lg border transition-all duration-200 ${
+                  className={`p-4 rounded-lg border transition-all duration-200 cursor-pointer hover:bg-gray-700/30 ${
                     notification.status === 'unread'
                       ? 'bg-blue-900/20 border-blue-700/50'
                       : 'bg-gray-700/20 border-gray-600/50'
                   }`}
+                  onClick={() => handleNotificationClick(notification)}
                 >
                   <div className="flex items-start space-x-3">
                     <div className="flex-shrink-0 mt-1">
@@ -279,6 +317,10 @@ const NotificationCenter = ({ username, isVisible, onClose }) => {
                           {notification.status === 'unread' && (
                             <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
                           )}
+                          {/* Click indicator */}
+                          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
                         </div>
                       </div>
                       

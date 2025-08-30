@@ -110,7 +110,7 @@ const MessageActions = ({
     <div 
       className={`message-actions absolute -top-2 -left-2 bg-gray-800/95 backdrop-blur-sm border border-gray-600/50 rounded-lg shadow-lg z-50 ${className}`}
       style={{
-        minWidth: '120px',
+        minWidth: '160px',
         transform: 'translateY(-100%)'
       }}
     >

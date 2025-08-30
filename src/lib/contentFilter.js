@@ -15,7 +15,15 @@ const VULGAR_WORDS = [
   'fuckhead', 'fuckwit', 'fuckoff', 'fuckyou', 'fucku', 'fuckoff',
   'fuckup', 'fuckup', 'fuckup', 'fuckup', 'fuckup', 'fuckup',
   
-  // Common variations and misspellings
+  // Hindi vulgar words written in English text (Romanized)
+  'madarchod', 'behnchod', 'chutiya', 'rand', 'chut', 'lund', 'gaand', 'bhosda', 
+  'harami', 'behaya', 'randi', 'madar', 'behn', 'bhos', 'haram', 'behay',
+  'chutiye', 'chutiyo', 'chutiyon', 'chutiyon', 'chutiyon', 'chutiyon',
+  
+  // Gujarati vulgar words written in English text (Romanized)
+  'gaandu', 'gaand', 'gaandu', 'gaand', 'gaandu', 'gaand', 'gaandu',
+  
+  // Common variations and misspellings (asterisks are literal characters)
   'f*ck', 'f**k', 'f***', 'f****', 'f*****', 'f******', 'f*******',
   's**t', 's***', 's****', 's*****', 's******', 's*******',
   'b*tch', 'b**ch', 'b***h', 'b****', 'b*****', 'b******',
@@ -69,10 +77,21 @@ const PATTERNS = [
   /\b[A-Za-z]*[Ss][Hh][Ii][Tt][A-Za-z]*\b/gi,
   /\b[A-Za-z]*[Bb][Ii][Tt][Cc][Hh][A-Za-z]*\b/gi,
   
-  // Numbers replacing letters
-  /\b\w*[Ff][Uu][Cc][Kk]\w*\b/gi,
-  /\b\w*[Ss][Hh][1!][Tt]\w*\b/gi,
-  /\b\w*[Bb][1!][Tt][Cc][Hh]\w*\b/gi,
+  // Hindi vulgar word variations (mixed case)
+  /\b[A-Za-z]*[Mm][Aa][Dd][Aa][Rr][Cc][Hh][Oo][Dd][A-Za-z]*\b/gi,
+  /\b[A-Za-z]*[Bb][Ee][Hh][Nn][Cc][Hh][Oo][Dd][A-Za-z]*\b/gi,
+  /\b[A-Za-z]*[Cc][Hh][Uu][Tt][Ii][Yy][Aa][A-Za-z]*\b/gi,
+  /\b[A-Za-z]*[Rr][Aa][Nn][Dd][Ii][A-Za-z]*\b/gi,
+  /\b[A-Za-z]*[Cc][Hh][Uu][Tt][A-Za-z]*\b/gi,
+  /\b[A-Za-z]*[Ll][Uu][Nn][Dd][A-Za-z]*\b/gi,
+  /\b[A-Za-z]*[Gg][Aa][Aa][Nn][Dd][A-Za-z]*\b/gi,
+  /\b[A-Za-z]*[Bb][Hh][Oo][Ss][Dd][Aa][A-Za-z]*\b/gi,
+  
+  // Numbers replacing letters in Hindi vulgar words
+  /\b\w*[Mm][Aa][Dd][Aa][Rr][Cc][Hh][Oo][Dd]\w*\b/gi,
+  /\b\w*[Bb][Ee][Hh][Nn][Cc][Hh][Oo][Dd]\w*\b/gi,
+  /\b\w*[Cc][Hh][Uu][Tt][Ii][Yy][Aa]\w*\b/gi,
+  /\b\w*[Rr][Aa][Nn][Dd][Ii]\w*\b/gi,
   
   // Unicode variations
   /\b\w*[Ff][Uu][Cc][Kk]\w*\b/gi,
@@ -110,7 +129,9 @@ export function filterMessage(message) {
       continue;
     }
     
-    const regex = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+    // Properly escape special regex characters including asterisks
+    const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
     if (regex.test(lowerMessage)) {
       isClean = false;
       // Replace vulgar words with asterisks
@@ -169,20 +190,19 @@ export function isMessageClean(message) {
   // Combine default vulgar words with custom additional words
   const allVulgarWords = [...VULGAR_WORDS, ...CUSTOM_FILTER_RULES.ADDITIONAL_WORDS];
   
-  // Check for vulgar words
-  for (const word of allVulgarWords) {
-    // Skip whitelisted words
-    if (CUSTOM_FILTER_RULES.WHITELIST.includes(word.toLowerCase())) {
-      continue;
-    }
-    
-    const regex = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
-    if (regex.test(lowerMessage)) {
-      return false;
-    }
+  // Use a single regex for better performance instead of multiple regex tests
+  // Properly escape special regex characters including asterisks
+  const escapedWords = allVulgarWords.map(word => 
+    word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  );
+  const vulgarPattern = new RegExp(`\\b(${escapedWords.join('|')})\\b`, 'gi');
+  
+  // Check for vulgar words with single regex test
+  if (vulgarPattern.test(lowerMessage)) {
+    return false;
   }
 
-  // Check for patterns if enabled
+  // Check for patterns if enabled (only if no vulgar words found)
   if (FILTER_CONFIG.FILTER_SPACED_PATTERNS) {
     for (const pattern of PATTERNS) {
       if (pattern.test(message)) {
@@ -208,7 +228,9 @@ export function getDetectedVulgarWords(message) {
   const lowerMessage = message.toLowerCase();
   
   for (const word of VULGAR_WORDS) {
-    const regex = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+    // Properly escape special regex characters including asterisks
+    const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
     if (regex.test(lowerMessage)) {
       detected.push(word);
     }
@@ -251,30 +273,20 @@ export async function filterMessageAI(message) {
   }
 
   try {
-    // Use AI moderation
+    // Use AI moderation for detection and reporting
     const moderationResult = await moderateContent(message);
     const report = getModerationReport(moderationResult);
     
     if (moderationResult.isClean) {
       return { isClean: true, filteredMessage: message, report };
     } else {
-      // Create filtered message by replacing inappropriate content
-      let filteredMessage = message;
-      
-      // If AI detected specific categories, apply appropriate filtering
-      if (report.flaggedCategories.length > 0) {
-        // For high severity, replace with asterisks
-        if (report.severity === 'high') {
-          filteredMessage = '*'.repeat(message.length);
-        } else {
-          // For medium severity, try to clean specific parts
-          filteredMessage = cleanMessageByCategory(message, report.flaggedCategories);
-        }
-      }
+      // Always use traditional filtering for the actual message replacement
+      // This ensures vulgar words are properly replaced with asterisks
+      const traditionalFilter = filterMessage(message);
       
       return { 
         isClean: false, 
-        filteredMessage, 
+        filteredMessage: traditionalFilter.filteredMessage, // Use traditionally filtered message
         report,
         confidence: moderationResult.confidence,
         language: report.language
@@ -287,27 +299,7 @@ export async function filterMessageAI(message) {
   }
 }
 
-/**
- * Clean message based on flagged categories
- * @param {string} message - Original message
- * @param {Array} flaggedCategories - Categories flagged by AI
- * @returns {string} - Cleaned message
- */
-function cleanMessageByCategory(message, flaggedCategories) {
-  let cleanedMessage = message;
-  
-  // Apply different cleaning strategies based on categories
-  flaggedCategories.forEach(({ category, score }) => {
-    if (score > 0.8) {
-      // High confidence - replace with asterisks
-      if (category === 'hate' || category === 'sexual' || category === 'violence') {
-        cleanedMessage = cleanedMessage.replace(/./g, '*');
-      }
-    }
-  });
-  
-  return cleanedMessage;
-}
+
 
 /**
  * Check if a message contains vulgar content without filtering it (AI version)

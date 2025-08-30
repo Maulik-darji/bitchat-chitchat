@@ -74,8 +74,7 @@ service cloud.firestore {
       allow update: if isAuthenticated()
                     && resource.data.uid == request.auth.uid;
       allow delete: if isAuthenticated()
-                    && (resource.data.uid == request.auth.uid || 
-                        isRoomCreator(resource.data.roomId, request.auth.uid));
+                    && resource.data.uid == request.auth.uid;
     }
 
     // ROOM USERS (membership mapping)
@@ -87,8 +86,7 @@ service cloud.firestore {
                     && nonEmptyString(request.resource.data.username, 50)
                     && request.resource.data.uid == request.auth.uid;
       allow update, delete: if isAuthenticated()
-                            && (resource.data.uid == request.auth.uid ||
-                                isRoomCreator(resource.data.roomId, request.auth.uid));
+                            && resource.data.uid == request.auth.uid;
     }
 
     // ROOMS
@@ -114,9 +112,7 @@ service cloud.firestore {
                     && request.resource.data.fromUid == request.auth.uid;
       allow update: if isAuthenticated();
       allow delete: if isAuthenticated()
-                    && (resource.data.fromUid == request.auth.uid ||
-                        resource.data.toUsername == getCurrentUsernameFromUid() ||
-                        isRoomCreator(resource.data.roomId, request.auth.uid));
+                    && resource.data.fromUid == request.auth.uid;
     }
 
     // PRIVATE CHATS
@@ -124,10 +120,8 @@ service cloud.firestore {
     match /privateChats/{chatId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      allow update: if isAuthenticated()
-                    && isChatParticipant(chatId, request.auth.uid);
-      allow delete: if isAuthenticated()
-                    && isChatParticipant(chatId, request.auth.uid);
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
     }
 
     // PRIVATE MESSAGES
@@ -139,11 +133,9 @@ service cloud.firestore {
                     && nonEmptyString(request.resource.data.username, 50)
                     && nonEmptyString(request.resource.data.message, 1000)
                     && request.resource.data.uid == request.auth.uid;
-      allow update: if isAuthenticated()
-                    && resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated();
       allow delete: if isAuthenticated()
-                    && (resource.data.uid == request.auth.uid ||
-                        isChatParticipant(resource.data.chatId, request.auth.uid));
+                    && resource.data.uid == request.auth.uid;
     }
 
     // REMOVAL NOTIFICATIONS
@@ -162,37 +154,14 @@ service cloud.firestore {
     }
 
     // GENERAL NOTIFICATIONS
-    // { id, username, type, title, message, timestamp, read }
+    // { id, recipientUsername, type, message, messagePreview, actionUrl, messageType, createdAt, status }
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated()
-                    && resource.data.username == getCurrentUsernameFromUid();
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated()
-                    && nonEmptyString(request.resource.data.username, 50)
+                    && nonEmptyString(request.resource.data.recipientUsername, 50)
                     && nonEmptyString(request.resource.data.message, 500);
-      allow update: if isAuthenticated()
-                    && resource.data.username == getCurrentUsernameFromUid();
-      allow delete: if isAuthenticated()
-                    && resource.data.username == getCurrentUsernameFromUid();
-    }
-
-    // Helper function to check if user is room creator
-    function isRoomCreator(roomId, uid) {
-      let room = get(/databases/$(database)/documents/rooms/$(roomId));
-      return room != null && room.data.createdByUid == uid;
-    }
-
-    // Helper function to check if user is a participant in a chat
-    function isChatParticipant(chatId, uid) {
-      let chat = get(/databases/$(database)/documents/privateChats/$(chatId));
-      return chat != null && chat.data.participantUids.hasAny([uid]);
-    }
-
-    // Helper function to get username from UID (for cleanup operations)
-    function getCurrentUsernameFromUid() {
-      // Since we can't directly get username from auth in rules,
-      // we'll use a more secure approach by checking if the user exists
-      // and has the right permissions
-      return request.auth != null;
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
     }
 
     // Deny everything else

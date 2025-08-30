@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import firebaseService from '../lib/firebase';
 import MessageActions from './MessageActions';
 import ContentModeration from './ContentModeration';
 import { isMessageClean } from '../lib/contentFilter';
 import MessageStatus from './MessageStatus';
+import { clearMessageNotifications } from '../lib/notifications';
 
 const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, hideHeader = false }) => {
   const [messages, setMessages] = useState([]);
@@ -22,44 +23,56 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
   const messagesContainerRef = useRef(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const scrollTimeoutRef = useRef(null);
+  const lastScrollTopRef = useRef(0);
   const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
-  const focusInput = () => {
-    if (!isDesktop) return;
-    if (typeof window !== 'undefined' && window.__modalOpen) return;
-    const el = inputRef.current;
-    if (!el) return;
-    if (document.activeElement !== el) {
-      try { el.focus({ preventScroll: true }); } catch (_) { el.focus(); }
-    }
-  };
+  const isMobile = typeof window !== 'undefined' && (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Check if user is at the bottom of the chat
-  const isAtBottom = () => {
+  // Check if user is at the bottom of the chat with mobile-optimized threshold
+  const isAtBottom = useCallback(() => {
     if (!messagesContainerRef.current) return true;
     const container = messagesContainerRef.current;
-    const threshold = 100; // 100px threshold to consider "at bottom"
+    // Increase threshold for mobile devices to prevent accidental auto-scroll
+    const threshold = isMobile ? 150 : 100;
     return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
-  };
+  }, [isMobile]);
 
-  // Handle scroll events to detect user scrolling
-  const handleScroll = () => {
-    if (messagesContainerRef.current) {
-      const atBottom = isAtBottom();
-      setShouldAutoScroll(atBottom);
-      setIsUserScrolling(!atBottom);
+  // Debounced scroll handler to prevent rapid state changes
+  const handleScroll = useCallback(() => {
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
     }
-  };
+
+    scrollTimeoutRef.current = setTimeout(() => {
+      if (messagesContainerRef.current) {
+        const container = messagesContainerRef.current;
+        const currentScrollTop = container.scrollTop;
+        const atBottom = isAtBottom();
+        
+        // Only update state if there's a meaningful change (prevents micro-adjustments)
+        const scrollChanged = Math.abs(currentScrollTop - lastScrollTopRef.current) > 5;
+        
+        if (scrollChanged) {
+          setShouldAutoScroll(atBottom);
+          setIsUserScrolling(!atBottom);
+          lastScrollTopRef.current = currentScrollTop;
+        }
+      }
+    }, 100); // 100ms debounce for smooth experience
+  }, [isAtBottom]);
 
   // Smart scroll that only auto-scrolls when appropriate
-  const smartScrollToBottom = () => {
+  const smartScrollToBottom = useCallback(() => {
     if (shouldAutoScroll) {
       scrollToBottom();
     }
-  };
+  }, [shouldAutoScroll]);
 
   // Handle when user manually scrolls to bottom
   const handleScrollToBottom = () => {
@@ -68,14 +81,40 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
     scrollToBottom();
   };
 
+  // Store current scroll position before messages update
+  const preserveScrollPosition = useCallback(() => {
+    if (messagesContainerRef.current && !shouldAutoScroll) {
+      const container = messagesContainerRef.current;
+      const currentScrollTop = container.scrollTop;
+      const currentScrollHeight = container.scrollHeight;
+      
+      // Store the position relative to the bottom
+      const distanceFromBottom = currentScrollHeight - currentScrollTop;
+      
+      // Return a function to restore the position
+      return () => {
+        if (container && !shouldAutoScroll) {
+          const newScrollHeight = container.scrollHeight;
+          const newScrollTop = newScrollHeight - distanceFromBottom;
+          container.scrollTop = newScrollTop;
+        }
+      };
+    }
+    return null;
+  }, [shouldAutoScroll]);
+
     useEffect(() => {
     if (!chatId) return;
 
     let unsubscribe = () => {};
+    let hasMarkedAsRead = false; // Track if we've already marked messages as read
 
     const setupListener = async () => {
       try {
         unsubscribe = firebaseService.onPrivateChatMessagesUpdate(chatId, (messageList) => {
+          // Preserve scroll position before updating messages
+          const restoreScroll = preserveScrollPosition();
+          
           setMessages(prevMessages => {
             // Keep optimistic messages that haven't been confirmed yet
             const optimisticMessages = prevMessages.filter(msg => msg.isOptimistic);
@@ -100,12 +139,27 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
             return filteredMessages;
           });
           
-          // Mark messages as read when chat is opened
-          if (messageList.length > 0) {
+          // Restore scroll position after state update
+          if (restoreScroll) {
+            // Use requestAnimationFrame to ensure DOM is updated
+            requestAnimationFrame(() => {
+              restoreScroll();
+            });
+          }
+          
+          // Mark messages as read only once when chat is first opened
+          if (messageList.length > 0 && !hasMarkedAsRead) {
             try {
+              console.log('Marking messages as read for chat:', chatId, 'user:', username);
               firebaseService.markAllPrivateMessagesAsRead(chatId, username);
+              // Clear notifications when messages are marked as read
+              clearMessageNotifications(username, chatId, 'private');
+              hasMarkedAsRead = true; // Mark as done to prevent infinite loop
+              console.log('Successfully marked messages as read and cleared notifications');
             } catch (error) {
               console.error('Error marking messages as read:', error);
+              // Even if marking as read fails, don't retry to prevent infinite loop
+              hasMarkedAsRead = true;
             }
           }
         });
@@ -128,27 +182,50 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
   useEffect(() => {
     // Only auto-scroll if user is at bottom or if this is the first load
     if (messages.length > 0 && shouldAutoScroll) {
-      smartScrollToBottom();
+      // Add a small delay for mobile devices to ensure smooth scrolling
+      const delay = isMobile ? 150 : 100;
+      const timer = setTimeout(() => {
+        smartScrollToBottom();
+      }, delay);
+      return () => clearTimeout(timer);
     }
-  }, [messages, shouldAutoScroll]);
+  }, [messages, shouldAutoScroll, smartScrollToBottom, isMobile]);
 
-  // Desktop: keep input focused
-  useEffect(() => {
-    if (isDesktop) focusInput();
-  }, [isDesktop]);
+
 
   // Add scroll event listener to detect user scrolling
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (container) {
       container.addEventListener('scroll', handleScroll);
-      return () => container.removeEventListener('scroll', handleScroll);
+      // Add touch events for mobile devices
+      container.addEventListener('touchstart', handleScroll);
+      container.addEventListener('touchmove', handleScroll);
+      container.addEventListener('touchend', handleScroll);
+      
+      return () => {
+        container.removeEventListener('scroll', handleScroll);
+        container.removeEventListener('touchstart', handleScroll);
+        container.removeEventListener('touchmove', handleScroll);
+        container.removeEventListener('touchend', handleScroll);
+        // Clean up timeout to prevent memory leaks
+        if (scrollTimeoutRef.current) {
+          clearTimeout(scrollTimeoutRef.current);
+        }
+      };
     }
+  }, [handleScroll]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
   }, []);
 
-  useEffect(() => {
-    if (isDesktop) focusInput();
-  }, [messages.length]);
+
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -205,10 +282,14 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
       console.error('Error sending message:', error);
     } finally {
       setIsSending(false);
+      // Restore focus on desktop devices after sending message
       if (isDesktop) {
-        focusInput();
-        setTimeout(focusInput, 0);
-        setTimeout(focusInput, 100);
+        // Use a short delay to ensure the DOM has updated
+        setTimeout(() => {
+          if (inputRef.current && !editingMessage) {
+            inputRef.current.focus();
+          }
+        }, 50);
       }
     }
   };
@@ -217,7 +298,9 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
     setReplyingTo(message);
     // Clear long-press state for this message
     setLongPressedMessageId(null);
-    inputRef.current?.focus();
+    if (isDesktop) {
+      inputRef.current?.focus();
+    }
   };
 
   const handleUnsend = async (messageId) => {
@@ -286,10 +369,14 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
       console.error('Error sending moderated message:', error);
     } finally {
       setIsSending(false);
+      // Restore focus on desktop devices after sending message
       if (isDesktop) {
-        focusInput();
-        setTimeout(focusInput, 0);
-        setTimeout(focusInput, 100);
+        // Use a short delay to ensure the DOM has updated
+        setTimeout(() => {
+          if (inputRef.current && !editingMessage) {
+            inputRef.current.focus();
+          }
+        }, 50);
       }
     }
   };
@@ -336,7 +423,10 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
   const isCurrentUser = (messageUsername) => messageUsername === username;
 
   return (
-    <div className="flex h-full bg-gray-900/50">
+    <div 
+      className="flex h-full private-chat-container" 
+      style={{ backgroundColor: '#212121' }}
+    >
       {/* Content Moderation Modal */}
       <ContentModeration
         message={moderationMessage}
@@ -356,7 +446,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
         >
           {/* Optional internal header (hidden when parent renders a fixed header) */}
           {!hideHeader && (
-                         <div className="sticky top-0 z-30 bg-gray-800/60 backdrop-blur-sm border-b border-gray-700/50 p-4 flex-shrink-0">
+                         <div className="sticky top-0 z-30 backdrop-blur-sm border-b border-gray-700/50 p-4 flex-shrink-0" style={{ backgroundColor: '#212121' }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 lg:w-10 lg:h-10 bg-purple-600/20 border border-purple-500/30 rounded-full flex items-center justify-center">
@@ -406,7 +496,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
           )}
 
           {/* Messages */}
-          <div className="flex-1 p-2 lg:p-3 space-y-3 flex flex-col min-h-0">
+          <div className="flex-1 p-2 lg:p-3 space-y-3 flex flex-col min-h-0" style={{ backgroundColor: '#212121' }}>
           {messages.length === 0 ? (
             <div className="text-center text-gray-400/70 py-12">
               <div className="w-16 h-16 bg-purple-800/50 border border-purple-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -488,7 +578,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                       <div className={`
                         ${isCurrentUser(message.username) 
                           ? 'bg-purple-600/20 border-purple-500/30 text-white/90' 
-                          : 'bg-message-bg/40 border-gray-700/30 text-white/90'
+                          : 'bg-gray-700/20 border-gray-600/30 text-white/90'
                         } 
                         backdrop-blur-sm rounded-2xl px-2.5 py-1.5 border break-words inline-block
                       `}>
@@ -533,7 +623,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                              right: isCurrentUser(message.username) ? '-8px' : 'auto',
                              zIndex: 99999
                            }}>
-                                                 <div className="bg-gray-800/95 backdrop-blur-sm border border-gray-600/50 rounded-lg shadow-2xl p-2" style={{ minWidth: '120px' }}>
+                                                                                                   <div className="backdrop-blur-sm border border-gray-600/50 rounded-lg shadow-2xl p-2" style={{ minWidth: '160px', backgroundColor: '#303030' }}>
                           <div className="flex flex-col space-y-1">
                                                          {/* Reply Button */}
                              <button
@@ -600,7 +690,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
         </div>
 
         {/* Message Input */}
-                            <div className="backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0" style={{ backgroundColor: '#303030' }} onClick={() => { if (isDesktop) inputRef.current?.focus(); }}>
+                            <div className="backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0" style={{ backgroundColor: '#303030' }}>
                      {/* Reply indicator */}
            {replyingTo && (
              <div className="mb-3 p-3 bg-gray-700/30 rounded-lg border-l-4 border-purple-500">
@@ -632,9 +722,27 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
               disabled={isSending}
               ref={inputRef}
               autoFocus={isDesktop}
-              onBlur={() => { 
-                // Only re-focus on desktop if we're not editing a message
-                if (isDesktop && !editingMessage) setTimeout(focusInput, 0); 
+              onBlur={(e) => { 
+                // Only restore focus on desktop if we're not editing a message
+                // and if the blur is not caused by clicking outside the chat area
+                if (isDesktop && !editingMessage) {
+                  const chatArea = e.currentTarget.closest('.private-chat-container');
+                  const relatedTarget = e.relatedTarget;
+                  
+                  // Check if the blur is caused by clicking outside the chat area
+                  if (chatArea && (!relatedTarget || !chatArea.contains(relatedTarget))) {
+                    // User clicked outside the chat area - don't restore focus
+                    return;
+                  }
+                  
+                  // For internal interactions, restore focus after a short delay
+                  // This allows other elements to be clicked without interference
+                  setTimeout(() => {
+                    if (inputRef.current && !editingMessage && document.activeElement !== inputRef.current) {
+                      inputRef.current.focus();
+                    }
+                  }, 100);
+                }
               }}
             />
                          <button

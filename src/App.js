@@ -32,22 +32,34 @@ const AppContent = () => {
   const [isResizing, setIsResizing] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
   const resizeRef = useRef(null);
+  const [securityWarning, setSecurityWarning] = useState(null);
 
 
-
-  // Sync URL with current view
+  // Handle URL changes and validate access
   useEffect(() => {
     const path = location.pathname;
     if (path === '/') {
       setCurrentView('home');
     } else if (path.startsWith('/room/')) {
       const roomId = path.split('/room/')[1];
-      // Find room by ID and set it
-      // This will be handled by the room selection logic
+      
+      // SECURITY: Validate that the user has access to this room
+      if (username && roomId) {
+        validateRoomAccess(roomId, username);
+      } else {
+        // If not authenticated or no username, redirect to home
+        navigate('/', { replace: true });
+      }
     } else if (path.startsWith('/chat/')) {
       const chatId = path.split('/chat/')[1];
-      // Find chat by ID and set it
-      // This will be handled by the chat selection logic
+      
+      // SECURITY: Validate that the user has access to this chat
+      if (username && chatId) {
+        validateChatAccess(chatId, username);
+      } else {
+        // If not authenticated or no username, redirect to home
+        navigate('/', { replace: true });
+      }
     } else if (path === '/join-room') {
       setCurrentView('join-room');
     } else if (path === '/create-room') {
@@ -55,7 +67,103 @@ const AppContent = () => {
     } else if (path === '/invite-user') {
       setCurrentView('invite-user');
     }
-  }, [location.pathname]);
+  }, [location.pathname, username, navigate]);
+
+  // Function to validate chat access
+  const validateChatAccess = async (chatId, username) => {
+    try {
+      // SECURITY: Validate chat ID format to prevent malicious URL manipulation
+      if (!chatId || typeof chatId !== 'string' || chatId.length > 100) {
+        console.warn(`Invalid chat ID format: ${chatId}`);
+        setSecurityWarning(`Security Alert: Invalid chat URL format detected. This incident has been logged.`);
+        setTimeout(() => setSecurityWarning(null), 5000);
+        navigate('/', { replace: true });
+        return;
+      }
+
+      // Check if chat ID contains only valid characters (alphanumeric and underscores)
+      if (!/^[a-zA-Z0-9_]+$/.test(chatId)) {
+        console.warn(`Chat ID contains invalid characters: ${chatId}`);
+        setSecurityWarning(`Security Alert: Invalid chat URL characters detected. This incident has been logged.`);
+        setTimeout(() => setSecurityWarning(null), 5000);
+        navigate('/', { replace: true });
+        return;
+      }
+
+      // Check if user is a participant in this chat
+      const hasAccess = await firebaseService.validateChatAccess(chatId, username);
+      
+      if (hasAccess) {
+        // User has access, set the chat and view
+        const chatData = await firebaseService.getPrivateChatData(chatId);
+        if (chatData) {
+          setCurrentPrivateChat(chatData);
+          setCurrentView('private-chat');
+        } else {
+          // Chat doesn't exist, redirect to home
+          navigate('/', { replace: true });
+        }
+      } else {
+        // User doesn't have access, show security warning and redirect to home
+        console.warn(`User ${username} attempted to access unauthorized chat: ${chatId}`);
+        setSecurityWarning(`Security Alert: You attempted to access a private chat you don't have permission to view. This incident has been logged.`);
+        setTimeout(() => setSecurityWarning(null), 5000); // Clear warning after 5 seconds
+        navigate('/', { replace: true });
+      }
+    } catch (error) {
+      console.error('Error validating chat access:', error);
+      // On error, redirect to home for security
+      navigate('/', { replace: true });
+    }
+  };
+
+  // Function to validate room access
+  const validateRoomAccess = async (roomId, username) => {
+    try {
+      // SECURITY: Validate room ID format to prevent malicious URL manipulation
+      if (!roomId || typeof roomId !== 'string' || roomId.length > 100) {
+        console.warn(`Invalid room ID format: ${roomId}`);
+        setSecurityWarning(`Security Alert: Invalid room URL format detected. This incident has been logged.`);
+        setTimeout(() => setSecurityWarning(null), 5000);
+        navigate('/', { replace: true });
+        return;
+      }
+
+      // Check if room ID contains only valid characters (alphanumeric and underscores)
+      if (!/^[a-zA-Z0-9_]+$/.test(roomId)) {
+        console.warn(`Room ID contains invalid characters: ${roomId}`);
+        setSecurityWarning(`Security Alert: Invalid room URL characters detected. This incident has been logged.`);
+        setTimeout(() => setSecurityWarning(null), 5000);
+        navigate('/', { replace: true });
+        return;
+      }
+
+      // Check if user is a member of this room
+      const hasAccess = await firebaseService.validateRoomAccess(roomId, username);
+      
+      if (hasAccess) {
+        // User has access, set the room and view
+        const roomData = await firebaseService.getRoomData(roomId);
+        if (roomData) {
+          setCurrentRoom(roomData);
+          setCurrentView('private-room');
+        } else {
+          // Room doesn't exist, redirect to home
+          navigate('/', { replace: true });
+        }
+      } else {
+        // User doesn't have access, show security warning and redirect to home
+        console.warn(`User ${username} attempted to access unauthorized room: ${roomId}`);
+        setSecurityWarning(`Security Alert: You attempted to access a private room you don't have permission to view. This incident has been logged.`);
+        setTimeout(() => setSecurityWarning(null), 5000); // Clear warning after 5 seconds
+        navigate('/', { replace: true });
+      }
+    } catch (error) {
+      console.error('Error validating room access:', error);
+      // On error, redirect to home for security
+      navigate('/', { replace: true });
+    }
+  };
 
   // Sync current view with URL
   useEffect(() => {
@@ -447,6 +555,18 @@ const AppContent = () => {
       
       {/* Main Layout */}
       <div className="flex h-full">
+        
+        {/* Security Warning */}
+        {securityWarning && (
+          <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg max-w-md text-center">
+            <div className="flex items-center space-x-2">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <span className="font-medium">{securityWarning}</span>
+            </div>
+          </div>
+        )}
         {/* Left Sidebar - Hidden on small screens */}
         <div 
           className={`hidden lg:block h-screen overflow-hidden backdrop-blur-md border-r border-gray-800/50 ${

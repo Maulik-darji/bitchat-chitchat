@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import firebaseService from '../lib/firebase';
 import ContentModeration from './ContentModeration';
 import { isMessageClean } from '../lib/contentFilter';
@@ -9,7 +9,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
   const [newMessage, setNewMessage] = useState('');
   const [editingMessage, setEditingMessage] = useState(null);
   const [editText, setEditText] = useState('');
-  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const [spamStatus, setSpamStatus] = useState({ canSend: true, remainingMessages: 5, cooldown: 0 });
   const [spamError, setSpamError] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -22,37 +22,56 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
   const messagesContainerRef = useRef(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const scrollTimeoutRef = useRef(null);
+  const lastScrollTopRef = useRef(0);
+  const isMobile = typeof window !== 'undefined' && (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+  const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
 
-  
 
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Check if user is at the bottom of the chat
-  const isAtBottom = () => {
+  // Check if user is at the bottom of the chat with mobile-optimized threshold
+  const isAtBottom = useCallback(() => {
     if (!messagesContainerRef.current) return true;
     const container = messagesContainerRef.current;
-    const threshold = 100; // 100px threshold to consider "at bottom"
+    // Increase threshold for mobile devices to prevent accidental auto-scroll
+    const threshold = isMobile ? 150 : 100;
     return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
-  };
+  }, [isMobile]);
 
-  // Handle scroll events to detect user scrolling
-  const handleScroll = () => {
-    if (messagesContainerRef.current) {
-      const atBottom = isAtBottom();
-      setShouldAutoScroll(atBottom);
-      setIsUserScrolling(!atBottom);
+  // Debounced scroll handler to prevent rapid state changes
+  const handleScroll = useCallback(() => {
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
     }
-  };
+
+    scrollTimeoutRef.current = setTimeout(() => {
+      if (messagesContainerRef.current) {
+        const container = messagesContainerRef.current;
+        const currentScrollTop = container.scrollTop;
+        const atBottom = isAtBottom();
+        
+        // Only update state if there's a meaningful change (prevents micro-adjustments)
+        const scrollChanged = Math.abs(currentScrollTop - lastScrollTopRef.current) > 5;
+        
+        if (scrollChanged) {
+          setShouldAutoScroll(atBottom);
+          setIsUserScrolling(!atBottom);
+          lastScrollTopRef.current = currentScrollTop;
+        }
+      }
+    }, 100); // 100ms debounce for smooth experience
+  }, [isAtBottom]);
 
   // Smart scroll that only auto-scrolls when appropriate
-  const smartScrollToBottom = () => {
+  const smartScrollToBottom = useCallback(() => {
     if (shouldAutoScroll) {
       scrollToBottom();
     }
-  };
+  }, [shouldAutoScroll]);
 
   // Handle when user manually scrolls to bottom
   const handleScrollToBottom = () => {
@@ -61,9 +80,43 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
     scrollToBottom();
   };
 
+  // Store current scroll position before messages update
+  const preserveScrollPosition = useCallback(() => {
+    if (messagesContainerRef.current && !shouldAutoScroll) {
+      const container = messagesContainerRef.current;
+      const currentScrollTop = container.scrollTop;
+      const currentScrollHeight = container.scrollHeight;
+      
+      // Store the position relative to the bottom
+      const distanceFromBottom = currentScrollHeight - currentScrollTop;
+      
+      // Return a function to restore the position
+      return () => {
+        if (container && !shouldAutoScroll) {
+          const newScrollHeight = container.scrollHeight;
+          const newScrollTop = newScrollHeight - distanceFromBottom;
+          container.scrollTop = newScrollTop;
+        }
+      };
+    }
+    return null;
+  }, [shouldAutoScroll]);
+
   useEffect(() => {
     const unsubscribe = firebaseService.onPublicChatsUpdate((messageList) => {
+      // Preserve scroll position before updating messages
+      const restoreScroll = preserveScrollPosition();
+      
       setMessages(messageList);
+      
+      // Restore scroll position after state update
+      if (restoreScroll) {
+        // Use requestAnimationFrame to ensure DOM is updated
+        requestAnimationFrame(() => {
+          restoreScroll();
+        });
+      }
+      
       // Emit message count to parent component
       window.dispatchEvent(new CustomEvent('messageCountUpdate', { 
         detail: { count: messageList.length } 
@@ -80,14 +133,19 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
       unsubscribe();
       window.removeEventListener('refreshPublicChat', handleRefreshEvent);
     };
-  }, []);
+  }, [preserveScrollPosition]);
 
   useEffect(() => {
     // Only auto-scroll if user is at bottom or if this is the first load
     if (messages.length > 0 && shouldAutoScroll) {
-      smartScrollToBottom();
+      // Add a small delay for mobile devices to ensure smooth scrolling
+      const delay = isMobile ? 150 : 100;
+      const timer = setTimeout(() => {
+        smartScrollToBottom();
+      }, delay);
+      return () => clearTimeout(timer);
     }
-  }, [messages, shouldAutoScroll]);
+  }, [messages, shouldAutoScroll, smartScrollToBottom, isMobile]);
 
   // Add a more robust scroll mechanism for new messages
   useEffect(() => {
@@ -121,15 +179,24 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
     return () => clearInterval(interval);
   }, [username, spamError]);
 
-  // Focus input initially but allow it to lose focus
+  // Focus input initially and maintain focus (only on desktop)
   useEffect(() => {
-    // Only focus initially, don't keep re-focusing
-    setTimeout(() => {
+    // Focus initially only on desktop
+    if (isDesktop) {
       if (inputRef.current && document.activeElement !== inputRef.current) {
         inputRef.current.focus();
       }
-    }, 100);
-  }, []);
+    }
+  }, [isDesktop]);
+
+  // Maintain focus when messages change (new messages arrive) - only on desktop
+  useEffect(() => {
+    if (messages.length > 0 && isDesktop) {
+      if (inputRef.current && !editingMessage) {
+        inputRef.current.focus();
+      }
+    }
+  }, [messages.length, isDesktop]);
 
   // Add scroll event listener to detect user scrolling
   useEffect(() => {
@@ -138,7 +205,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
       container.addEventListener('scroll', handleScroll);
       return () => container.removeEventListener('scroll', handleScroll);
     }
-  }, []);
+  }, [handleScroll]);
 
   // Remove the auto-re-focus effect that was causing the persistent focus
 
@@ -155,6 +222,12 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
       return;
     }
     
+    // If message is clean, send it directly
+    await sendMessageToFirebase(messageText);
+  };
+
+  // Separate function to send message to Firebase
+  const sendMessageToFirebase = async (messageText) => {
     setNewMessage('');
     setIsSending(true);
 
@@ -208,10 +281,15 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
       setMessages(prev => prev.filter(msg => !msg.isOptimistic));
     } finally {
       setIsSending(false);
-      // Restore focus to input field after sending message
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 0);
+      // Restore focus on desktop devices after sending message
+      if (isDesktop) {
+        // Use a short delay to ensure the DOM has updated
+        setTimeout(() => {
+          if (inputRef.current && !editingMessage) {
+            inputRef.current.focus();
+          }
+        }, 50);
+      }
     }
   };
 
@@ -227,9 +305,13 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
     }
   };
 
+
+
   const handleReply = (message) => {
     setReplyingTo(message);
-    inputRef.current?.focus();
+    if (isDesktop) {
+      inputRef.current?.focus();
+    }
   };
 
   const handleUnsend = async (messageId) => {
@@ -247,13 +329,10 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
   };
 
   const handleRefresh = async () => {
-    setIsRefreshing(true);
     try {
       await firebaseService.forceRefresh();
     } catch (error) {
       console.error('Error refreshing:', error);
-    } finally {
-      setIsRefreshing(false);
     }
   };
 
@@ -261,114 +340,11 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
     setShowContentModeration(false);
     setModerationMessage('');
     
-    if (messageToSend !== moderationMessage) {
-      // User chose to send filtered message
-      setNewMessage('');
-      setIsSending(true);
-      
-      try {
-        // Check spam protection
-        const spamCheck = firebaseService.checkSpam(username);
-        if (!spamCheck.allowed) {
-          setSpamError(spamCheck.reason);
-          setIsSending(false);
-          return;
-        }
-
-        // Create optimistic message
-        const optimisticMessage = {
-          id: `temp_${Date.now()}`,
-          username,
-          message: messageToSend,
-          timestamp: new Date(),
-          isOptimistic: true,
-          replyTo: replyingTo ? {
-            id: replyingTo.id,
-            username: replyingTo.username,
-            message: replyingTo.message
-          } : null
-        };
-
-        // Add to local state immediately
-        setMessages(prev => [...prev, optimisticMessage]);
-
-        // Send to Firebase
-        await firebaseService.sendPublicMessage(username, messageToSend, replyingTo ? {
-          id: replyingTo.id,
-          username: replyingTo.username,
-          message: replyingTo.message
-        } : null);
-
-        // Remove optimistic message and let Firebase update handle the real message
-        setMessages(prev => prev.filter(msg => !msg.isOptimistic));
-        
-        // Clear reply state AFTER successful send
-        setReplyingTo(null);
-      } catch (error) {
-        console.error('Error sending moderated message:', error);
-        setSpamError(error.message);
-        
-        // Remove optimistic message on error
-        setMessages(prev => prev.filter(msg => !msg.isOptimistic));
-      } finally {
-        setIsSending(false);
-        // Don't auto-re-focus after sending message
-      }
-    } else {
-      // User chose to send original message (admin override)
-      setNewMessage('');
-      setIsSending(true);
-      
-      try {
-        // Check spam protection
-        const spamCheck = firebaseService.checkSpam(username);
-        if (!spamCheck.allowed) {
-          setSpamError(spamCheck.reason);
-          setIsSending(false);
-          return;
-        }
-
-        // Create optimistic message
-        const optimisticMessage = {
-          id: `temp_${Date.now()}`,
-          username,
-          message: messageToSend,
-          timestamp: new Date(),
-          isOptimistic: true,
-          replyTo: replyingTo ? {
-            id: replyingTo.id,
-            username: replyingTo.username,
-            message: replyingTo.message
-          } : null
-        };
-
-        // Add to local state immediately
-        setMessages(prev => [...prev, optimisticMessage]);
-
-        // Send to Firebase
-        await firebaseService.sendPublicMessage(username, messageToSend, replyingTo ? {
-          id: replyingTo.id,
-          username: replyingTo.username,
-          message: replyingTo.message
-        } : null);
-
-        // Remove optimistic message and let Firebase update handle the real message
-        setMessages(prev => prev.filter(msg => !msg.isOptimistic));
-        
-        // Clear reply state AFTER successful send
-        setReplyingTo(null);
-      } catch (error) {
-        console.error('Error sending original message:', error);
-        setSpamError(error.message);
-        
-        // Remove optimistic message on error
-        setMessages(prev => prev.filter(msg => !msg.isOptimistic));
-      } finally {
-        setIsSending(false);
-        // Don't auto-re-focus after sending message
-      }
-    }
+    // Always send the message (filtered or original) using the common function
+    await sendMessageToFirebase(messageToSend);
   };
+
+
 
   const closeContentModeration = () => {
     setShowContentModeration(false);
@@ -408,7 +384,9 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
   const isCurrentUser = (messageUsername) => messageUsername === username;
 
   return (
-    <div className="flex flex-col h-full bg-gray-900/50 relative">
+    <div 
+      className="flex flex-col h-full bg-gray-900/50 relative public-chat-container"
+    >
       {/* Content Moderation Modal */}
       <ContentModeration
         message={moderationMessage}
@@ -519,7 +497,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
                       <div className={`
                         ${isCurrentUser(message.username) 
                           ? 'bg-gray-600/20 border-gray-500/30 text-white/90' 
-                          : 'bg-message-bg/40 border-gray-700/30 text-white/90'
+                          : 'bg-gray-700/20 border-gray-600/30 text-white/90'
                         } 
                         backdrop-blur-sm rounded-2xl px-2.5 py-1.5 border break-words inline-block
                       `}>
@@ -566,8 +544,8 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
                              right: isCurrentUser(message.username) ? '-8px' : 'auto',
                              zIndex: 99999
                            }}>
-                                                 <div className="backdrop-blur-sm border rounded-lg shadow-2xl p-2" style={{ minWidth: '120px', backgroundColor: '#303030', borderColor: '#202020' }}>
-                           <div className="flex flex-col space-y-1" style={{ minWidth: '150px' }}>
+                        <div className="backdrop-blur-sm border border-gray-600/50 rounded-lg shadow-2xl p-2" style={{ minWidth: '160px', backgroundColor: '#303030' }}>
+                          <div className="flex flex-col space-y-1">
                             {/* Reply Button */}
                             <button
                               onClick={() => handleReply(message)}
@@ -635,7 +613,6 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
              <div 
          className="backdrop-blur-sm p-4 lg:p-6 flex-shrink-0 sticky bottom-0 z-50"
          style={{ backgroundColor: '#303030' }}
-         onClick={() => { inputRef.current?.focus(); }}
        >
         {/* Spam Error Display - Only show when there's an actual error */}
         {spamError && (
@@ -645,7 +622,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
         )}
 
         {/* Message Input */}
-        <form onSubmit={handleSendMessage} className="flex space-x-3">
+        <form onSubmit={handleSendMessage} className="flex space-x-3 input-container">
           {/* Reply indicator */}
           {replyingTo && (
             <div className="mb-3 p-3 bg-gray-700/30 rounded-lg border-l-4 border-gray-500">
@@ -675,10 +652,33 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
              className="flex-1 text-white px-4 py-3 rounded-2xl border-2 border-[#202020] focus:border-[#303030] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
              style={{ backgroundColor: '#202020' }}
              ref={inputRef}
+             autoFocus={isDesktop}
              onKeyDown={(e) => {
                if (e.key === 'Enter' && !e.shiftKey) {
                  e.preventDefault();
                  handleSendMessage(e);
+               }
+             }}
+             onBlur={(e) => {
+               // Only restore focus on desktop if we're not editing a message
+               // and if the blur is not caused by clicking outside the chat area
+               if (isDesktop && !editingMessage) {
+                 const chatArea = e.currentTarget.closest('.public-chat-container');
+                 const relatedTarget = e.relatedTarget;
+                 
+                 // Check if the blur is caused by clicking outside the chat area
+                 if (chatArea && (!relatedTarget || !chatArea.contains(relatedTarget))) {
+                   // User clicked outside the chat area - don't restore focus
+                   return;
+                 }
+                 
+                 // For internal interactions, restore focus after a short delay
+                 // This allows other elements to be clicked without interference
+                 setTimeout(() => {
+                   if (inputRef.current && !editingMessage && document.activeElement !== inputRef.current) {
+                     inputRef.current.focus();
+                   }
+                 }, 100);
                }
              }}
            />

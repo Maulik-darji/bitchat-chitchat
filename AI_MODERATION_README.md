@@ -1,16 +1,19 @@
-# AI-Based Content Moderation System
+# AI-Based Content Moderation System with AllProfanity Integration
 
-This system provides intelligent content moderation for your chat application using AI to detect inappropriate content in **Gujarati**, **Hindi**, and **English** languages.
+This system provides intelligent content moderation for your chat application using AI and the powerful AllProfanity library to detect inappropriate content in **Gujarati**, **Hindi**, **Bengali**, **Tamil**, **Telugu**, and **English** languages.
 
 ## 🚀 Features
 
-- **Multi-language Support**: Automatically detects and moderates content in Gujarati, Hindi, and English
+- **Multi-language Support**: Automatically detects and moderates content in Gujarati, Hindi, Bengali, Tamil, Telugu, and English
 - **AI-Powered**: Uses OpenAI's content moderation API for intelligent detection
-- **Enhanced Local Detection**: Comprehensive patterns for Hindi and Gujarati vulgar words
-- **Fallback System**: Traditional word-based filtering as backup when AI is unavailable
+- **AllProfanity Integration**: Enterprise-grade profanity detection with TRIE-based algorithm
+- **Smart Whitelisting**: Automatically ignores specified vulgar words in all supported languages
+- **Enhanced Local Detection**: Comprehensive patterns for Indian language vulgar words
+- **Fallback System**: Advanced local detection when AI is unavailable
 - **Real-time Analysis**: Provides confidence scores and detailed reports
 - **Language Detection**: Automatically identifies the primary language of messages
-- **Severity Levels**: Categorizes content by severity (low, medium, high)
+- **Severity Levels**: Categorizes content by severity (MILD, MODERATE, SEVERE, EXTREME)
+- **Leet-Speak Detection**: Catches obfuscated profanities like `f#ck`, `a55hole`
 
 ## 🔧 Setup
 
@@ -18,18 +21,39 @@ This system provides intelligent content moderation for your chat application us
 
 The system is already configured with your API key:
 ```javascript
-const AI_MODERATION_API_KEY = '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';
+const AI_MODERATION_API_KEY = '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';
 ```
 
-### 2. Enable AI Moderation
+### 2. Enable AI Moderation and AllProfanity
 
-In `src/lib/contentFilterConfig.js`, ensure AI moderation is enabled:
+In `src/lib/contentFilterConfig.js`, ensure both AI moderation and AllProfanity are enabled:
 ```javascript
 export const FILTER_CONFIG = {
-  AI_MODERATION_ENABLED: true,  // Set to true to enable AI moderation
+  AI_MODERATION_ENABLED: true,    // Set to true to enable AI moderation
+  ALLPROFANITY_ENABLED: true,     // Set to true to enable AllProfanity
+  IGNORE_VULGAR_WORDS: true,      // Set to true to enable vulgar word whitelisting
   // ... other settings
 };
 ```
+
+## 🎯 AllProfanity Integration
+
+The system now integrates the powerful AllProfanity library for comprehensive profanity detection:
+
+### Key Benefits:
+- **Ultra-Fast Detection**: TRIE-based algorithm provides O(n) performance
+- **Multi-Script Support**: Handles Devanagari, Tamil, Telugu, Bengali, and Latin scripts
+- **Leet-Speak Detection**: Catches obfuscated profanities like `f#ck`, `a55hole`
+- **Smart Whitelisting**: Automatically ignores specified vulgar words
+- **Severity Assessment**: Provides detailed severity levels (MILD, MODERATE, SEVERE, EXTREME)
+
+### Supported Languages:
+- **Hindi** (हिंदी) - Devanagari and Romanized scripts
+- **Gujarati** (ગુજરાતી) - Gujarati and Romanized scripts  
+- **Bengali** (বাংলা) - Bengali script
+- **Tamil** (தமிழ்) - Tamil script
+- **Telugu** (తెలుగు) - Telugu script
+- **English** - Latin script
 
 ## 🎯 Enhanced Hindi & Gujarati Detection
 
@@ -65,6 +89,34 @@ console.log(`Is clean: ${result.isClean}`);
 console.log(`Confidence: ${result.confidence}`);
 console.log(`Language: ${report.language}`);
 console.log(`Severity: ${report.severity}`);
+```
+
+### AllProfanity Profanity Analysis
+
+```javascript
+import { getComprehensiveProfanityAnalysis } from './lib/aiModeration';
+
+// Get detailed profanity analysis
+const analysis = getComprehensiveProfanityAnalysis("Your message here");
+
+console.log(`Is Profane: ${analysis.isProfane}`);
+console.log(`Severity Level: ${analysis.severityLevel}`);
+console.log(`Detected Words: ${analysis.detectedWords}`);
+console.log(`Clean Version: ${analysis.cleanVersion}`);
+console.log(`Recommendations: ${analysis.recommendations}`);
+```
+
+### Vulgar Word Whitelist Information
+
+```javascript
+import { getIgnoredVulgarWordsInfo } from './lib/aiModeration';
+
+// Get information about ignored vulgar words
+const info = getIgnoredVulgarWordsInfo("Your message here");
+
+console.log(`Has Ignored Words: ${info.hasIgnoredWords}`);
+console.log(`Ignored Words: ${info.ignoredWords}`);
+console.log(`Profanity Info:`, info.profanityInfo);
 ```
 
 ### Integration with Content Filter
@@ -137,6 +189,17 @@ The AI system detects various types of inappropriate content:
 - **Sexual**: Explicit sexual content, harassment
 - **Violence**: Threats, violence, self-harm
 - **Self-harm**: Suicide, self-injury content
+
+## 📊 AllProfanity Severity Levels
+
+AllProfanity provides detailed severity assessment:
+
+| Level    | Enum Value | Description                         |
+| -------- | ---------- | ----------------------------------- |
+| MILD     | 1          | 1 unique/total word                 |
+| MODERATE | 2          | 2 unique or total words             |
+| SEVERE   | 3          | 3 unique/total words                |
+| EXTREME  | 4          | 4+ unique or 5+ total profane words |
 
 ## 📱 Component Integration
 
@@ -249,6 +312,10 @@ The system includes robust error handling:
 - **Performance Optimization**: Implement result caching
 - **Multi-modal**: Support for images and other content types
 - **Pattern Updates**: Regular updates to vulgar word patterns
+- **Additional Languages**: Support for Arabic, Russian, and other languages
+- **Contextual Detection**: Improve accuracy with conversation context
+- **Machine Learning**: Integrate ML-based content analysis
+- **Real-time Updates**: Dynamic dictionary updates
 
 ## 📞 Support
 
@@ -263,4 +330,6 @@ For issues or questions about the AI moderation system:
 
 **Note**: This system provides intelligent content moderation but should not be the only line of defense. Consider implementing additional safety measures and user reporting systems for comprehensive content management.
 
-**Hindi/Gujarati Support**: The system now includes comprehensive patterns for Indian language vulgar words, providing immediate detection without waiting for AI analysis.
+**AllProfanity Integration**: The system now includes enterprise-grade profanity detection with comprehensive support for Indian languages and scripts, providing immediate detection without waiting for AI analysis.
+
+**Additional Documentation**: For detailed information about the AllProfanity integration, see `ALLPROFANITY_INTEGRATION_README.md`.
