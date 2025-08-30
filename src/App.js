@@ -345,7 +345,7 @@ function App() {
 
   if (isInitializing) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#181818' }}>
         <div className="text-white text-xl">Initializing...</div>
       </div>
     );
