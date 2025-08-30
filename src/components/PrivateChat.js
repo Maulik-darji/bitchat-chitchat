@@ -107,7 +107,6 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
     if (!chatId) return;
 
     let unsubscribe = () => {};
-    let hasMarkedAsRead = false; // Track if we've already marked messages as read
 
     const setupListener = async () => {
       try {
@@ -147,19 +146,28 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
             });
           }
           
-          // Mark messages as read only once when chat is first opened
-          if (messageList.length > 0 && !hasMarkedAsRead) {
-            try {
-              console.log('Marking messages as read for chat:', chatId, 'user:', username);
-              firebaseService.markAllPrivateMessagesAsRead(chatId, username);
-              // Clear notifications when messages are marked as read
-              clearMessageNotifications(username, chatId, 'private');
-              hasMarkedAsRead = true; // Mark as done to prevent infinite loop
-              console.log('Successfully marked messages as read and cleared notifications');
-            } catch (error) {
-              console.error('Error marking messages as read:', error);
-              // Even if marking as read fails, don't retry to prevent infinite loop
-              hasMarkedAsRead = true;
+          // Mark new messages as read immediately in real-time
+          if (messageList.length > 0) {
+            // Check for new unread messages from other users
+            const newUnreadMessages = messageList.filter(msg => 
+              msg.username !== username && 
+              msg.status !== 'read' && 
+              (msg.status === 'sent' || msg.status === 'delivered')
+            );
+            
+            if (newUnreadMessages.length > 0) {
+              // Mark new messages as read immediately without delay
+              try {
+                console.log('Marking new messages as read in real-time:', newUnreadMessages.length, 'messages');
+                // Use the fastest optimistic method for immediate updates
+                const messageIds = newUnreadMessages.map(msg => msg.id);
+                firebaseService.markMessagesAsReadOptimistically(chatId, username, messageIds);
+                // Clear notifications when messages are marked as read
+                clearMessageNotifications(username, chatId, 'private');
+                console.log('Successfully marked new messages as read in real-time');
+              } catch (error) {
+                console.error('Error marking new messages as read:', error);
+              }
             }
           }
         });
@@ -589,20 +597,25 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
                           </div>
                         )}
                         
-                        <p className="text-sm leading-relaxed mb-1">
-                          {message.message}
-                        </p>
-                        
-                                                 {/* Message status and timestamp */}
-                         <div className={`flex items-center justify-end space-x-2 ${isCurrentUser(message.username) ? 'text-purple-200/70' : 'text-gray-400/70'}`}>
-                           <MessageStatus 
-                             status={message.status || 'sent'} 
-                             timestamp={message.timestamp}
-                             isCurrentUser={isCurrentUser(message.username)}
-                           />
-                                                       {message.edited && (
-                                                              <span className="text-xs bg-gray-700/30 px-1 py-0.5 rounded text-xs">edited</span>
-                            )}
+                                                 <div className="flex items-center justify-between">
+                           <p className="text-sm leading-relaxed flex-1">
+                             {message.message}
+                           </p>
+                           
+                           {/* Message status and timestamp */}
+                           <div className={`flex items-center space-x-2 ml-2 ${isCurrentUser(message.username) ? 'text-purple-200/70' : 'text-gray-400/70'}`}>
+                             <span className="text-xs">
+                               {formatTime(message.timestamp)}
+                             </span>
+                             <MessageStatus 
+                               status={message.status || 'sent'} 
+                               timestamp={message.timestamp}
+                               isCurrentUser={isCurrentUser(message.username)}
+                             />
+                             {message.edited && (
+                               <span className="text-xs bg-gray-700/30 px-1 py-0.5 rounded text-xs">edited</span>
+                             )}
+                           </div>
                          </div>
                       </div>
                       

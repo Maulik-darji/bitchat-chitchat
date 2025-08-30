@@ -33,12 +33,20 @@ const AppContent = () => {
   const [messageCount, setMessageCount] = useState(0);
   const resizeRef = useRef(null);
   const [securityWarning, setSecurityWarning] = useState(null);
+  const [isNavigating, setIsNavigating] = useState(false); // Flag to prevent circular dependency
 
 
   // Handle URL changes and validate access
   useEffect(() => {
+    if (isNavigating) {
+      console.log('🚫 Skipping URL change handling - programmatically navigating');
+      return; // Skip if we're programmatically navigating
+    }
+    
+    console.log('📍 URL changed to:', location.pathname);
     const path = location.pathname;
     if (path === '/') {
+      console.log('🏠 Setting view to home from URL');
       setCurrentView('home');
     } else if (path.startsWith('/room/')) {
       const roomId = path.split('/room/')[1];
@@ -67,7 +75,7 @@ const AppContent = () => {
     } else if (path === '/invite-user') {
       setCurrentView('invite-user');
     }
-  }, [location.pathname, username, navigate]);
+  }, [location.pathname, username, navigate, isNavigating]);
 
   // Function to validate chat access
   const validateChatAccess = async (chatId, username) => {
@@ -165,37 +173,67 @@ const AppContent = () => {
     }
   };
 
-  // Sync current view with URL
+  // Sync current view with URL - FIXED to prevent circular dependency
   useEffect(() => {
-    if (username) {
+    if (username && !isNavigating) {
+      const path = location.pathname;
+      let shouldNavigate = false;
+      let targetPath = '/';
+      
+      // Only navigate if currentView doesn't match the URL
       switch (currentView) {
         case 'home':
-          navigate('/', { replace: true });
+          if (path !== '/') {
+            shouldNavigate = true;
+            targetPath = '/';
+          }
           break;
         case 'join-room':
-          navigate('/join-room', { replace: true });
+          if (path !== '/join-room') {
+            shouldNavigate = true;
+            targetPath = '/join-room';
+          }
           break;
         case 'create-room':
-          navigate('/create-room', { replace: true });
+          if (path !== '/create-room') {
+            shouldNavigate = true;
+            targetPath = '/create-room';
+          }
           break;
         case 'invite-user':
-          navigate('/invite-user', { replace: true });
+          if (path !== '/invite-user') {
+            shouldNavigate = true;
+            targetPath = '/invite-user';
+          }
           break;
         case 'private-room':
-          if (currentRoom) {
-            navigate(`/room/${currentRoom.id}`, { replace: true });
+          if (currentRoom && path !== `/room/${currentRoom.id}`) {
+            shouldNavigate = true;
+            targetPath = `/room/${currentRoom.id}`;
           }
           break;
         case 'private-chat':
-          if (currentPrivateChat) {
-            navigate(`/chat/${currentPrivateChat.chatId}`, { replace: true });
+          if (currentPrivateChat && path !== `/chat/${currentPrivateChat.chatId}`) {
+            shouldNavigate = true;
+            targetPath = `/chat/${currentPrivateChat.chatId}`;
           }
           break;
-        default:
-          navigate('/', { replace: true });
+      }
+      
+      if (shouldNavigate) {
+        console.log('🔄 Syncing currentView to URL:', currentView, '->', targetPath);
+        setIsNavigating(true); // Set flag to prevent circular dependency
+        
+        navigate(targetPath, { replace: true });
+        
+        // Reset flag after navigation completes
+        setTimeout(() => {
+          console.log('✅ Navigation flag reset');
+          setIsNavigating(false);
+        }, 150); // Increased delay to ensure navigation completes
       }
     }
-  }, [currentView, currentRoom, currentPrivateChat, username, navigate]);
+  }, [currentView, currentRoom, currentPrivateChat, username, navigate, isNavigating, location.pathname]);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -903,6 +941,7 @@ const AppContent = () => {
                     </button>
                     <button
                       onClick={() => {
+                        console.log('🚪 Exit button clicked - setting view to home');
                         setCurrentView('home');
                         setCurrentPrivateChat(null);
                       }}
@@ -923,6 +962,7 @@ const AppContent = () => {
                   otherUsername={currentPrivateChat.otherUsername}
                   username={username}
                   onClose={() => {
+                    console.log('💬 PrivateChat onClose called - setting view to home');
                     setCurrentView('home');
                     setCurrentPrivateChat(null);
                   }}

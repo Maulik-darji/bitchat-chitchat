@@ -1,11 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import firebaseService from '../lib/firebase';
 
 const RemovalNotification = ({ currentUser, onUserRemoved }) => {
   const [notifications, setNotifications] = useState([]);
+  const unsubscribeRef = useRef(null);
+  const isInitializedRef = useRef(false);
 
   useEffect(() => {
-    if (!currentUser?.uid) return;
+    if (!currentUser?.uid || isInitializedRef.current) return;
+
+    console.log('🔔 Setting up removal notifications listener for UID:', currentUser.uid);
+    isInitializedRef.current = true;
 
     // Listen for removal notifications
     const unsubscribe = firebaseService.onRemovalNotificationsUpdate(
@@ -29,8 +34,17 @@ const RemovalNotification = ({ currentUser, onUserRemoved }) => {
       }
     );
 
-    return unsubscribe;
-  }, [currentUser?.uid, onUserRemoved]);
+    unsubscribeRef.current = unsubscribe;
+
+    return () => {
+      if (unsubscribeRef.current) {
+        console.log('🔕 Cleaning up removal notifications listener for UID:', currentUser.uid);
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+        isInitializedRef.current = false;
+      }
+    };
+  }, [currentUser?.uid]); // Removed onUserRemoved from dependencies to prevent re-initialization
 
   // Track user activity when interacting with removal notifications
   useEffect(() => {

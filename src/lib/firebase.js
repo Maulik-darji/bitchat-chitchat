@@ -118,6 +118,7 @@ class FirebaseService {
     this.isInitialized = false;
     this.initPromise = null;
     this.unsubscribeFns = new Set();
+    this.activeListeners = new Map(); // Track active listeners to prevent duplicates
   }
 
   /**
@@ -3750,6 +3751,73 @@ class FirebaseService {
     } catch (error) {
       console.error('Error getting room data:', error);
       return null;
+    }
+  }
+
+  /**
+   * Mark a specific message as read immediately (optimized for real-time updates)
+   */
+  async markMessageAsReadImmediately(messageId) {
+    try {
+      const messageRef = doc(db, COLLECTIONS.PRIVATE_MESSAGES, messageId);
+      await updateDoc(messageRef, {
+        status: 'read',
+        readAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error marking message as read immediately:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark new messages as read in real-time (optimized version)
+   */
+  async markNewMessagesAsRead(chatId, username, messageIds) {
+    try {
+      if (!messageIds || messageIds.length === 0) return;
+      
+      // Use individual updates for immediate feedback instead of batching
+      const updatePromises = messageIds.map(async (messageId) => {
+        try {
+          await this.markMessageAsReadImmediately(messageId);
+        } catch (error) {
+          console.error(`Error marking message ${messageId} as read:`, error);
+        }
+      });
+      
+      // Execute all updates concurrently for maximum speed
+      await Promise.allSettled(updatePromises);
+    } catch (error) {
+      console.error('Error marking new messages as read:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark messages as read with optimistic updates (fastest method)
+   */
+  async markMessagesAsReadOptimistically(chatId, username, messageIds) {
+    try {
+      if (!messageIds || messageIds.length === 0) return;
+      
+      // Start all updates immediately without waiting
+      messageIds.forEach(async (messageId) => {
+        try {
+          // Fire and forget - don't wait for response
+          this.markMessageAsReadImmediately(messageId).catch(error => {
+            console.error(`Error marking message ${messageId} as read:`, error);
+          });
+        } catch (error) {
+          console.error(`Error queuing message ${messageId} for read update:`, error);
+        }
+      });
+      
+      // Return immediately for instant UI feedback
+      return true;
+    } catch (error) {
+      console.error('Error marking messages as read optimistically:', error);
+      throw error;
     }
   }
 }

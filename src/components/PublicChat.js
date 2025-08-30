@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import firebaseService from '../lib/firebase';
 import ContentModeration from './ContentModeration';
 import { isMessageClean } from '../lib/contentFilter';
-import MessageStatus from './MessageStatus';
 
 const PublicChat = ({ username, sidebarWidth = 256 }) => {
   const [messages, setMessages] = useState([]);
@@ -557,21 +556,30 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
                           </div>
                         )}
                         
-                        <p className="text-sm leading-relaxed mb-1">
-                          {message.message}
-                        </p>
-                        
-                        {/* Message status and timestamp - WhatsApp style */}
-                        <div className={`flex items-center justify-end space-x-2 ${isCurrentUser(message.username) ? 'text-gray-200/70' : 'text-gray-400/70'}`}>
-                          <MessageStatus 
-                            status={message.status || 'sent'} 
-                            timestamp={message.timestamp}
-                            isCurrentUser={isCurrentUser(message.username)}
-                          />
-                          {message.edited && (
-                            <span className="text-xs bg-gray-700/30 px-1 py-0.5 rounded text-xs">edited</span>
-                          )}
-                        </div>
+                                                 <div className="flex items-center justify-between">
+                           <p className="text-sm leading-relaxed flex-1">
+                             {message.message}
+                           </p>
+                           
+                           {/* Timestamp and edited indicator - only show for current user's messages */}
+                           {isCurrentUser(message.username) && (
+                             <div className="flex items-center space-x-2 ml-2 text-gray-200/70">
+                               <span className="text-xs">
+                                 {formatTime(message.timestamp)}
+                               </span>
+                               {message.edited && (
+                                 <span className="text-xs bg-gray-700/30 px-1 py-0.5 rounded text-xs">edited</span>
+                               )}
+                             </div>
+                           )}
+                           
+                           {/* Edited indicator for other users' messages - show without timestamp */}
+                           {!isCurrentUser(message.username) && message.edited && (
+                             <div className="flex items-center ml-2">
+                               <span className="text-xs bg-gray-700/30 px-1 py-0.5 rounded text-xs text-gray-400/70">edited</span>
+                             </div>
+                           )}
+                         </div>
                       </div>
                       
 

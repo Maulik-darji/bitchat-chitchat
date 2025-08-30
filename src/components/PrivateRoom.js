@@ -777,17 +777,22 @@ const PrivateRoom = (props) => {
                     {/* Message bubble */}
                     <div className={`relative group ${isCurrentUser(message.username) ? 'ml-auto' : 'mr-auto'}`}>
                                              <div className="text-white/90 rounded-2xl px-3 py-2 break-words inline-block max-w-full" style={{backgroundColor: '#303030'}}>
-                        <p className="text-sm leading-relaxed mb-2">
-                          {message.message}
-                        </p>
-                        
-                        {/* Message status and timestamp */}
-                        <div className={`flex items-center justify-end ${isCurrentUser(message.username) ? 'text-green-200/70' : 'text-gray-400/70'}`}>
-                          <MessageStatus 
-                            status={message.status || 'sent'} 
-                            timestamp={message.timestamp}
-                            isCurrentUser={isCurrentUser(message.username)}
-                          />
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm leading-relaxed flex-1">
+                            {message.message}
+                          </p>
+                          
+                          {/* Timestamp and message status */}
+                          <div className={`flex items-center space-x-2 ml-2 ${isCurrentUser(message.username) ? 'text-green-200/70' : 'text-gray-400/70'}`}>
+                            <span className="text-xs">
+                              {formatTime(message.timestamp)}
+                            </span>
+                            <MessageStatus 
+                              status={message.status || 'sent'} 
+                              timestamp={message.timestamp}
+                              isCurrentUser={isCurrentUser(message.username)}
+                            />
+                          </div>
                         </div>
                         
                         {/* Message Actions - CSS hover based (same as PublicChat and PrivateChat) */}
