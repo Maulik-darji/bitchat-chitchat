@@ -3185,7 +3185,14 @@ class FirebaseService {
    */
   onRemovalNotificationsUpdate(uid, callback) {
     try {
-      console.log('Setting up removal notifications listener for UID:', uid);
+      // Check if listener already exists for this UID
+      const listenerKey = `removal_notifications_${uid}`;
+      if (this.activeListeners && this.activeListeners.has(listenerKey)) {
+        console.log('🔄 Removal notifications listener already exists for UID:', uid);
+        return this.activeListeners.get(listenerKey);
+      }
+      
+      console.log('🔔 Setting up removal notifications listener for UID:', uid);
       
       const q = query(
         collection(db, COLLECTIONS.REMOVAL_NOTIFICATIONS),
@@ -3198,23 +3205,28 @@ class FirebaseService {
         snapshot.forEach((doc) => {
           const notificationData = { id: doc.id, ...doc.data() };
           notifications.push(notificationData);
-          console.log('Received removal notification:', notificationData);
         });
         
-        console.log('Removal notifications updated:', notifications.length, 'notifications for UID', uid);
+        console.log('📬 Removal notifications updated:', notifications.length, 'notifications for UID', uid);
         callback(notifications);
       }, (error) => {
-        console.error('Error listening to removal notifications:', error);
+        console.error('❌ Error listening to removal notifications:', error);
         callback([]);
       });
       
+      // Store the listener reference
+      this.activeListeners.set(listenerKey, unsubscribe);
+      
       this.unsubscribeFns.add(unsubscribe);
       return () => {
-        try { unsubscribe(); } catch (_) {}
+        try { 
+          unsubscribe(); 
+          this.activeListeners.delete(listenerKey);
+        } catch (_) {}
         this.unsubscribeFns.delete(unsubscribe);
       };
     } catch (error) {
-      console.error('Error setting up removal notifications listener:', error);
+      console.error('❌ Error setting up removal notifications listener:', error);
       callback([]);
     }
   }
@@ -3819,6 +3831,37 @@ class FirebaseService {
       console.error('Error marking messages as read optimistically:', error);
       throw error;
     }
+  }
+
+  /**
+   * Clean up all listeners and reset state
+   */
+  cleanup() {
+    console.log('🧹 Cleaning up Firebase service...');
+    
+    // Clean up all unsubscribe functions
+    this.unsubscribeFns.forEach(unsubscribe => {
+      try {
+        unsubscribe();
+      } catch (error) {
+        console.warn('Error during cleanup:', error);
+      }
+    });
+    this.unsubscribeFns.clear();
+    
+    // Clean up active listeners
+    if (this.activeListeners) {
+      this.activeListeners.forEach((unsubscribe, key) => {
+        try {
+          unsubscribe();
+        } catch (error) {
+          console.warn('Error cleaning up listener:', key, error);
+        }
+      });
+      this.activeListeners.clear();
+    }
+    
+    console.log('✅ Firebase service cleanup completed');
   }
 }
 

@@ -286,6 +286,16 @@ const AppContent = () => {
     };
 
     initializeApp();
+
+    // Cleanup function to prevent memory leaks
+    return () => {
+      console.log('🧹 App component unmounting - cleaning up Firebase listeners');
+      try {
+        firebaseService.cleanup();
+      } catch (error) {
+        console.warn('Error during cleanup:', error);
+      }
+    };
   }, []);
 
   // Persist navigation state so refresh resumes where user left off
