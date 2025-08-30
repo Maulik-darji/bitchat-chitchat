@@ -30,7 +30,7 @@ const NotificationBell = ({ username }) => {
     <>
       <button
         onClick={handleBellClick}
-        className="relative p-2 text-gray-400 hover:text-white transition-colors duration-200 rounded-lg hover:bg-gray-700/50"
+        className="relative p-2 text-gray-400 hover:text-white transition-colors duration-200 rounded-lg" style={{backgroundColor: '#303030'}}
         title="Notifications"
       >
         <span className="material-symbols-outlined text-2xl">

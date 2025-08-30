@@ -106,7 +106,7 @@ const JoinRoom = ({ username, onJoinRoom, onClose }) => {
                 id="roomCode"
                 value={roomCode}
                 onChange={(e) => setRoomCode(e.target.value)}
-                className="flex-1 px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent text-white placeholder-gray-400"
+                className="flex-1 px-4 py-3 bg-[#303030] border border-gray-700/50 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent text-white placeholder-gray-400"
                 placeholder="Enter room code"
                 disabled={isJoining}
                 ref={inputRef}
@@ -144,7 +144,8 @@ const JoinRoom = ({ username, onJoinRoom, onClose }) => {
           <button
             type="submit"
             disabled={isJoining || !roomCode.trim()}
-            className="w-full bg-gray-600 hover:bg-gray-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-colors"
+            className="w-full disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-colors"
+            style={{backgroundColor: '#414071'}}
           >
             {isJoining ? 'Joining...' : 'Join Room'}
           </button>

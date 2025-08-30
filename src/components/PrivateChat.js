@@ -19,6 +19,9 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
   const [copiedMessageId, setCopiedMessageId] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
   const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
   const focusInput = () => {
     if (!isDesktop) return;
@@ -32,6 +35,37 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Check if user is at the bottom of the chat
+  const isAtBottom = () => {
+    if (!messagesContainerRef.current) return true;
+    const container = messagesContainerRef.current;
+    const threshold = 100; // 100px threshold to consider "at bottom"
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+  };
+
+  // Handle scroll events to detect user scrolling
+  const handleScroll = () => {
+    if (messagesContainerRef.current) {
+      const atBottom = isAtBottom();
+      setShouldAutoScroll(atBottom);
+      setIsUserScrolling(!atBottom);
+    }
+  };
+
+  // Smart scroll that only auto-scrolls when appropriate
+  const smartScrollToBottom = () => {
+    if (shouldAutoScroll) {
+      scrollToBottom();
+    }
+  };
+
+  // Handle when user manually scrolls to bottom
+  const handleScrollToBottom = () => {
+    setShouldAutoScroll(true);
+    setIsUserScrolling(false);
+    scrollToBottom();
   };
 
     useEffect(() => {
@@ -92,13 +126,25 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
   }, [chatId, username]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    // Only auto-scroll if user is at bottom or if this is the first load
+    if (messages.length > 0 && shouldAutoScroll) {
+      smartScrollToBottom();
+    }
+  }, [messages, shouldAutoScroll]);
 
   // Desktop: keep input focused
   useEffect(() => {
     if (isDesktop) focusInput();
   }, [isDesktop]);
+
+  // Add scroll event listener to detect user scrolling
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, []);
 
   useEffect(() => {
     if (isDesktop) focusInput();
@@ -148,6 +194,10 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
 
       // Clear reply state
       setReplyingTo(null);
+      
+      // Auto-scroll to bottom when user sends a message
+      setShouldAutoScroll(true);
+      setIsUserScrolling(false);
       
     } catch (error) {
       // Remove optimistic message on error
@@ -300,6 +350,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
       <div className="flex-1 flex flex-col min-h-0">
         {/* Scroll container holds sticky header + messages so header sticks while scrolling */}
         <div
+          ref={messagesContainerRef}
           className="flex-1 overflow-y-auto flex flex-col min-h-0 will-change-scroll"
           style={{ WebkitOverflowScrolling: 'touch', position: 'relative' }}
         >
@@ -368,11 +419,28 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
             </div>
           ) : (
             <>
+              {/* Scroll to bottom button - only show when user is not at bottom */}
+              {isUserScrolling && (
+                <div className="sticky top-2 z-30 flex justify-center">
+                  <button
+                    onClick={handleScrollToBottom}
+                    className="bg-gray-700/80 hover:bg-gray-600/80 text-white/90 hover:text-white backdrop-blur-sm px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border border-gray-600/50 hover:border-gray-500/50 shadow-lg"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                      </svg>
+                      <span>New messages</span>
+                    </div>
+                  </button>
+                </div>
+              )}
+              
               {messages.map((message) => (
                 <div key={message.id} className={`flex ${isCurrentUser(message.username) ? 'justify-end' : 'justify-start'}`}>
                   {editingMessage === message.id ? (
                     <div className="max-w-xs lg:max-w-md relative z-[9998]">
-                                             <div className="bg-[#303030] backdrop-blur-sm rounded-lg p-4 border border-gray-600/50">
+                                             <div className="bg-gray-800/95 backdrop-blur-sm rounded-lg p-4 border border-gray-600/50">
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-2">
@@ -385,13 +453,14 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                             </div>
                             <span className="text-yellow-400/80 text-xs font-medium">Editing...</span>
                           </div>
-                                                     <textarea
-                             value={editText}
-                             onChange={(e) => setEditText(e.target.value)}
-                             className="w-full bg-[#303030] border border-gray-600/50 rounded-lg p-3 text-white/90 resize-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
-                             rows="3"
-                             autoFocus
-                           />
+                                                                               <textarea
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            className="w-full border border-gray-600/50 rounded-lg p-3 text-white/90 resize-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
+                            style={{ backgroundColor: '#202020' }}
+                            rows="3"
+                            autoFocus
+                          />
                           <div className="flex space-x-2">
                             <button
                               onClick={() => handleEditMessage(message.id, editText)}
@@ -425,15 +494,15 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                       `}>
                                                  {/* Reply indicator */}
                          {replyingTo && replyingTo.id === message.id && (
-                           <div className="mb-2 p-2 bg-[#303030] rounded-lg border-l-4 border-purple-500">
+                           <div className="mb-2 p-2 bg-gray-700/30 rounded-lg border-l-4 border-purple-500">
                             <p className="text-xs text-gray-400">Replying to:</p>
                             <p className="text-sm text-gray-300">{message.message}</p>
                           </div>
                         )}
                         
                                                  {/* Reply to message indicator */}
-                         {message.replyTo && (
-                           <div className="mb-2 p-2 bg-[#303030] rounded-lg border-l-4 border-purple-500">
+                                                 {message.replyTo && (
+                          <div className="mb-2 p-2 bg-gray-700/30 rounded-lg border-l-4 border-purple-500">
                             <p className="text-xs text-gray-400">Replying to {message.replyTo.username}:</p>
                             <p className="text-sm text-gray-300">{message.replyTo.message}</p>
                           </div>
@@ -451,7 +520,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                              isCurrentUser={isCurrentUser(message.username)}
                            />
                                                        {message.edited && (
-                              <span className="text-xs bg-[#303030] px-1 py-0.5 rounded text-xs">edited</span>
+                                                              <span className="text-xs bg-gray-700/30 px-1 py-0.5 rounded text-xs">edited</span>
                             )}
                          </div>
                       </div>
@@ -464,12 +533,12 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                              right: isCurrentUser(message.username) ? '-8px' : 'auto',
                              zIndex: 99999
                            }}>
-                                                 <div className="bg-[#303030] backdrop-blur-sm border border-gray-600/50 rounded-lg shadow-2xl p-2" style={{ minWidth: '120px' }}>
+                                                 <div className="bg-gray-800/95 backdrop-blur-sm border border-gray-600/50 rounded-lg shadow-2xl p-2" style={{ minWidth: '120px' }}>
                           <div className="flex flex-col space-y-1">
                                                          {/* Reply Button */}
                              <button
                                onClick={() => handleReply(message)}
-                               className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-[#303030] rounded-md transition-colors duration-150"
+                                                               className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-md transition-colors duration-150"
                              >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
@@ -478,10 +547,10 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                             </button>
 
                                                          {/* Copy Text Button */}
-                             <button
-                               onClick={() => handleCopyText(message.message, message.id)}
-                               className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-[#303030] rounded-md transition-colors duration-150"
-                             >
+                                                           <button
+                                onClick={() => handleCopyText(message.message, message.id)}
+                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-md transition-colors duration-150"
+                              >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 002 2v8a2 2 0 002 2z" />
                               </svg>
@@ -495,7 +564,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                                   setEditingMessage(message.id);
                                   setEditText(message.message);
                                 }}
-                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-[#303030] rounded-md transition-colors duration-150"
+                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-md transition-colors duration-150"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -531,10 +600,10 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
         </div>
 
         {/* Message Input */}
-                            <div className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0" onClick={() => { if (isDesktop) inputRef.current?.focus(); }}>
+                            <div className="backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0" style={{ backgroundColor: '#303030' }} onClick={() => { if (isDesktop) inputRef.current?.focus(); }}>
                      {/* Reply indicator */}
            {replyingTo && (
-             <div className="mb-3 p-3 bg-[#303030] rounded-lg border-l-4 border-purple-500">
+             <div className="mb-3 p-3 bg-gray-700/30 rounded-lg border-l-4 border-purple-500">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-400">Replying to {replyingTo.username}:</p>
@@ -558,7 +627,8 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Type your message..."
-              className="flex-1 px-4 py-3 bg-[#303030] border border-[#181818] rounded-lg text-white/90 placeholder-gray-400/70 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
+              className="flex-1 text-white px-4 py-3 rounded-2xl border-2 border-[#202020] focus:border-[#303030] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: '#202020' }}
               disabled={isSending}
               ref={inputRef}
               autoFocus={isDesktop}

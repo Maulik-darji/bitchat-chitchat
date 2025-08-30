@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import './App.css';
 import UsernameModal from './components/UsernameModal';
 import Sidebar from './components/Sidebar';
@@ -12,7 +13,11 @@ import firebaseService from './lib/firebase';
 import RemovalNotification from './components/RemovalNotification';
 import NotificationBell from './components/NotificationBell';
 
-function App() {
+// Wrapper component to handle routing logic
+const AppContent = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  
   const [username, setUsername] = useState(null);
   const [currentView, setCurrentView] = useState('home');
   const [currentRoom, setCurrentRoom] = useState(null);
@@ -25,7 +30,64 @@ function App() {
     return saved ? parseInt(saved) : 256;
   }); // Default 256px (w-64)
   const [isResizing, setIsResizing] = useState(false);
+  const [messageCount, setMessageCount] = useState(0);
   const resizeRef = useRef(null);
+
+
+
+  // Sync URL with current view
+  useEffect(() => {
+    const path = location.pathname;
+    if (path === '/') {
+      setCurrentView('home');
+    } else if (path.startsWith('/room/')) {
+      const roomId = path.split('/room/')[1];
+      // Find room by ID and set it
+      // This will be handled by the room selection logic
+    } else if (path.startsWith('/chat/')) {
+      const chatId = path.split('/chat/')[1];
+      // Find chat by ID and set it
+      // This will be handled by the chat selection logic
+    } else if (path === '/join-room') {
+      setCurrentView('join-room');
+    } else if (path === '/create-room') {
+      setCurrentView('create-room');
+    } else if (path === '/invite-user') {
+      setCurrentView('invite-user');
+    }
+  }, [location.pathname]);
+
+  // Sync current view with URL
+  useEffect(() => {
+    if (username) {
+      switch (currentView) {
+        case 'home':
+          navigate('/', { replace: true });
+          break;
+        case 'join-room':
+          navigate('/join-room', { replace: true });
+          break;
+        case 'create-room':
+          navigate('/create-room', { replace: true });
+          break;
+        case 'invite-user':
+          navigate('/invite-user', { replace: true });
+          break;
+        case 'private-room':
+          if (currentRoom) {
+            navigate(`/room/${currentRoom.id}`, { replace: true });
+          }
+          break;
+        case 'private-chat':
+          if (currentPrivateChat) {
+            navigate(`/chat/${currentPrivateChat.chatId}`, { replace: true });
+          }
+          break;
+        default:
+          navigate('/', { replace: true });
+      }
+    }
+  }, [currentView, currentRoom, currentPrivateChat, username, navigate]);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -33,17 +95,18 @@ function App() {
         // Initialize Firebase
         await firebaseService.initialize();
         
-        // Check for existing username in sessionStorage
-        const savedUsername = sessionStorage.getItem('username');
+        // Check for existing username in localStorage (persistent across tab closes)
+        const savedUsername = localStorage.getItem('username');
+        
         if (savedUsername) {
           setUsername(savedUsername);
           // Backfill uid onto legacy user doc so server cleanup works by UID
           await firebaseService.ensureUserUid(savedUsername);
 
           // Restore last view and context
-          const savedView = sessionStorage.getItem('currentView');
-          const savedRoom = sessionStorage.getItem('currentRoom');
-          const savedPrivateChat = sessionStorage.getItem('currentPrivateChat');
+          const savedView = localStorage.getItem('currentView');
+          const savedRoom = localStorage.getItem('currentRoom');
+          const savedPrivateChat = localStorage.getItem('currentPrivateChat');
 
           if (savedView) {
             setCurrentView(savedView);
@@ -66,6 +129,8 @@ function App() {
               }
             } catch (_) {}
           }
+          
+          console.log('Session restored successfully for user:', savedUsername);
         }
       } catch (error) {
         console.error('App initialization failed:', error);
@@ -80,16 +145,16 @@ function App() {
   // Persist navigation state so refresh resumes where user left off
   useEffect(() => {
     if (username) {
-      sessionStorage.setItem('currentView', currentView);
+      localStorage.setItem('currentView', currentView);
     }
   }, [username, currentView]);
 
   useEffect(() => {
     if (username) {
       if (currentRoom) {
-        sessionStorage.setItem('currentRoom', JSON.stringify(currentRoom));
+        localStorage.setItem('currentRoom', JSON.stringify(currentRoom));
       } else {
-        sessionStorage.removeItem('currentRoom');
+        localStorage.removeItem('currentRoom');
       }
     }
   }, [username, currentRoom]);
@@ -97,9 +162,9 @@ function App() {
   useEffect(() => {
     if (username) {
       if (currentPrivateChat) {
-        sessionStorage.setItem('currentPrivateChat', JSON.stringify(currentPrivateChat));
+        localStorage.setItem('currentPrivateChat', JSON.stringify(currentPrivateChat));
       } else {
-        sessionStorage.removeItem('currentPrivateChat');
+        localStorage.removeItem('currentPrivateChat');
       }
     }
   }, [username, currentPrivateChat]);
@@ -110,7 +175,11 @@ function App() {
       // Just set the username in the app state
       console.log('Setting username in app state:', newUsername);
       setUsername(newUsername);
-      sessionStorage.setItem('username', newUsername);
+      
+      // Store username in localStorage for persistence (never expires)
+      localStorage.setItem('username', newUsername);
+      
+      console.log('Session created for user:', newUsername, '(never expires)');
     } catch (error) {
       console.error('Error setting username in app state:', error);
       throw error;
@@ -191,7 +260,7 @@ function App() {
       await firebaseService.deleteUserAccount();
       
       // Clear session
-      sessionStorage.removeItem('username');
+      localStorage.removeItem('username');
       setUsername(null);
       setCurrentView('home');
       setCurrentRoom(null);
@@ -220,7 +289,7 @@ function App() {
       }
       
       // Clear session regardless of errors
-      sessionStorage.removeItem('username');
+      localStorage.removeItem('username');
       setUsername(null);
       setCurrentView('home');
       setCurrentRoom(null);
@@ -231,7 +300,7 @@ function App() {
 
   const handleEditUsername = () => {
     setUsername(null);
-    sessionStorage.removeItem('username');
+    localStorage.removeItem('username');
     setCurrentView('home');
     setCurrentRoom(null);
     setCurrentPrivateChat(null);
@@ -321,6 +390,19 @@ function App() {
     }
   }, [isResizing]);
 
+  // Listen for message count updates from PublicChat
+  useEffect(() => {
+    const handleMessageCountUpdate = (event) => {
+      setMessageCount(event.detail.count);
+    };
+
+    window.addEventListener('messageCountUpdate', handleMessageCountUpdate);
+    
+    return () => {
+      window.removeEventListener('messageCountUpdate', handleMessageCountUpdate);
+    };
+  }, []);
+
   // Save sidebar width to localStorage when it changes
   useEffect(() => {
     localStorage.setItem('sidebarWidth', sidebarWidth.toString());
@@ -346,7 +428,7 @@ function App() {
   if (isInitializing) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#181818' }}>
-        <div className="text-white text-xl">Initializing...</div>
+        <div className="text-white text-xl">Loading...</div>
       </div>
     );
   }
@@ -448,6 +530,13 @@ function App() {
                     <h1 className="text-2xl font-bold text-white text-left">Public Chat</h1>
                   </div>
                   <div className="flex items-center space-x-3">
+                    {/* Message Count */}
+                    <div className="flex items-center space-x-2 p-2 hover:bg-[#303030] disabled:bg-gray-600/20 rounded-lg transition-all duration-200">
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{backgroundColor: '#303030'}}>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      <span className="text-gray-300 font-medium">{messageCount}</span>
+                    </div>
                     {/* Notification Bell */}
                     <NotificationBell username={username} />
                     <button
@@ -460,7 +549,7 @@ function App() {
                         setTimeout(() => setIsRefreshing(false), 1000);
                       }}
                       disabled={isRefreshing}
-                      className="p-2 bg-gray-700/50 hover:bg-gray-600/50 disabled:bg-gray-600/20 rounded-lg border border-gray-600/50 hover:border-gray-500/50 disabled:border-gray-500/30 transition-all duration-200"
+                                             className="p-2 hover:bg-[#303030] disabled:bg-gray-600/20 rounded-lg transition-all duration-200"
                       title="Refresh messages"
                     >
                       {isRefreshing ? (
@@ -614,6 +703,14 @@ function App() {
         </div>
       )}
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
   );
 }
 

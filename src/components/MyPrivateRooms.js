@@ -56,6 +56,22 @@ const MyPrivateRooms = ({ username, onRoomSelect, sidebarWidth = 256 }) => {
     }
   };
 
+  const handleCopyRoomCode = async (roomCode) => {
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      console.log('Room code copied to clipboard');
+    } catch (error) {
+      console.error('Failed to copy room code:', error);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = roomCode;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    }
+  };
+
   const toggleMultiSelectMode = () => {
     setIsMultiSelectMode(!isMultiSelectMode);
     if (isMultiSelectMode) {
@@ -261,7 +277,7 @@ const MyPrivateRooms = ({ username, onRoomSelect, sidebarWidth = 256 }) => {
           {myRooms.map((room) => (
             <div
               key={room.id}
-              className="bg-gray-800/30 hover:bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 transition-all duration-200 group"
+                              className="rounded-lg p-3 transition-all duration-200 group" style={{backgroundColor: '#222222'}}
             >
                           <div className="flex items-center justify-between">
               {isMultiSelectMode && (

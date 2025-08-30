@@ -120,7 +120,7 @@ const UsernameModal = ({ onUsernameSet }) => {
               id="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent text-white placeholder-gray-400 text-sm lg:text-base"
+              className="w-full px-4 py-3 bg-gray-800 border border-gray-700/50 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent text-white placeholder-gray-400 text-sm lg:text-base"
               placeholder="Enter your username"
               disabled={isChecking}
             />

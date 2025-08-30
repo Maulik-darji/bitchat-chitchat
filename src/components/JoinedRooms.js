@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import firebaseService from '../lib/firebase';
 
 const JoinedRooms = ({ username, onRoomSelect, onViewChange }) => {
@@ -67,7 +68,8 @@ const JoinedRooms = ({ username, onRoomSelect, onViewChange }) => {
             className="bg-gray-800/30 hover:bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 transition-all duration-200 group"
           >
             <div className="flex items-center justify-between">
-              <button
+              <Link
+                to={`/room/${room.id}`}
                 onClick={() => {
                   console.log('Joined Room clicked:', room);
                   onRoomSelect(room);
@@ -86,7 +88,7 @@ const JoinedRooms = ({ username, onRoomSelect, onViewChange }) => {
                 <div className="text-gray-500/70 text-xs lg:text-sm">
                   {room.members?.length || 0} member{(room.members?.length || 0) !== 1 ? 's' : ''}
                 </div>
-              </button>
+              </Link>
               
               <button
                 onClick={async () => {
@@ -99,20 +101,21 @@ const JoinedRooms = ({ username, onRoomSelect, onViewChange }) => {
                     if (typeof onViewChange === 'function') {
                       onViewChange('home');
                     }
-                    // Best-effort Firestore leave in background
+                    
                     try {
                       await firebaseService.leaveRoom(room.id, username);
                       console.log('Left room successfully');
                     } catch (error) {
-                      console.error('Error leaving room (ignored after redirect):', error);
+                      console.error('Error leaving room:', error);
+                      alert('Failed to leave room. Please try again.');
                     }
                   }
                 }}
-                className="text-orange-400/70 hover:text-orange-300 p-1.5 rounded transition-all duration-200 opacity-0 group-hover:opacity-100"
-                title="Leave room"
+                className="text-gray-400/70 hover:text-red-400 hover:bg-red-900/20 p-2 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 flex-shrink-0"
+                title={`Leave ${room.name}`}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a1 1 0 013 3v1" />
                 </svg>
               </button>
             </div>

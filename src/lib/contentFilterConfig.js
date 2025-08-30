@@ -5,6 +5,9 @@ export const FILTER_CONFIG = {
   // Enable/disable content filtering
   ENABLED: true,
   
+  // Enable AI-based moderation for better multi-language support
+  AI_MODERATION_ENABLED: true,
+  
   // Action to take when inappropriate content is detected
   // Options: 'block', 'filter', 'warn'
   ACTION: 'warn',

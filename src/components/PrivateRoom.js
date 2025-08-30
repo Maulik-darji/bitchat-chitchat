@@ -21,6 +21,9 @@ const PrivateRoom = (props) => {
   const usersUnsubRef = useRef(null);
   const wasMemberRef = useRef(null);
   const inputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [showContentModeration, setShowContentModeration] = useState(false);
   const [moderationMessage, setModerationMessage] = useState('');
@@ -37,6 +40,37 @@ const PrivateRoom = (props) => {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Check if user is at the bottom of the chat
+  const isAtBottom = () => {
+    if (!messagesContainerRef.current) return true;
+    const container = messagesContainerRef.current;
+    const threshold = 100; // 100px threshold to consider "at bottom"
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+  };
+
+  // Handle scroll events to detect user scrolling
+  const handleScroll = () => {
+    if (messagesContainerRef.current) {
+      const atBottom = isAtBottom();
+      setShouldAutoScroll(atBottom);
+      setIsUserScrolling(!atBottom);
+    }
+  };
+
+  // Smart scroll that only auto-scrolls when appropriate
+  const smartScrollToBottom = () => {
+    if (shouldAutoScroll) {
+      scrollToBottom();
+    }
+  };
+
+  // Handle when user manually scrolls to bottom
+  const handleScrollToBottom = () => {
+    setShouldAutoScroll(true);
+    setIsUserScrolling(false);
+    scrollToBottom();
   };
 
   const handleCopyCode = async () => {
@@ -127,19 +161,22 @@ const PrivateRoom = (props) => {
   }, [room?.roomId]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    // Only auto-scroll if user is at bottom or if this is the first load
+    if (messages.length > 0 && shouldAutoScroll) {
+      smartScrollToBottom();
+    }
+  }, [messages, shouldAutoScroll]);
 
   // Add a more robust scroll mechanism for new messages
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > 0 && shouldAutoScroll) {
       // Small delay to ensure DOM is updated
       const timer = setTimeout(() => {
-        scrollToBottom();
+        smartScrollToBottom();
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [messages.length]);
+  }, [messages.length, shouldAutoScroll]);
 
   // Desktop: keep the input focused so users can type next message immediately
   useEffect(() => {
@@ -147,6 +184,15 @@ const PrivateRoom = (props) => {
       focusInput();
     }
   }, [isDesktop]);
+
+  // Add scroll event listener to detect user scrolling
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, []);
 
   useEffect(() => {
     if (isDesktop) {
@@ -192,6 +238,10 @@ const PrivateRoom = (props) => {
 
       // Remove optimistic message and let Firebase update handle the real message
       setMessages(prev => prev.filter(msg => !msg.isOptimistic));
+      
+      // Auto-scroll to bottom when user sends a message
+      setShouldAutoScroll(true);
+      setIsUserScrolling(false);
       
     } catch (error) {
       console.error('Error sending message:', error);
@@ -245,6 +295,10 @@ const PrivateRoom = (props) => {
 
       // Remove optimistic message and let Firebase update handle the real message
       setMessages(prev => prev.filter(msg => !msg.isOptimistic));
+      
+      // Auto-scroll to bottom when user sends a message
+      setShouldAutoScroll(true);
+      setIsUserScrolling(false);
       
     } catch (error) {
       console.error('Error sending moderated message:', error);
@@ -331,151 +385,210 @@ const PrivateRoom = (props) => {
   const [copiedMessageId, setCopiedMessageId] = useState(null);
 
   return (
-    <div className="flex h-[100dvh] lg:h-full bg-gray-900/50">
-      {/* Content Moderation Modal */}
-      <ContentModeration
-        message={moderationMessage}
-        isVisible={showContentModeration}
-        onClose={closeContentModeration}
-        onSend={handleModeratedSend}
-        showWarning={true}
-      />
-      
-      {/* Users Sidebar - Desktop */}
-      <div className="hidden lg:flex w-64 bg-gray-800/60 backdrop-blur-sm border-r border-gray-700/50 flex-col flex-shrink-0">
-        {/* Room Header */}
-        <div className="p-4 lg:p-6 border-b border-gray-700/50 flex-shrink-0">
-          <div className="mb-4 text-left">
-            <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-bold text-white/90 mb-1 text-left">{room.roomName}</h2>
-              <p className="text-gray-400/70 text-sm mb-2 text-left">Private Room</p>
+         <div className="flex h-full bg-gray-900/50 relative">
+       {/* Content Moderation Modal */}
+       <ContentModeration
+         message={moderationMessage}
+         isVisible={showContentModeration}
+         onClose={closeContentModeration}
+         onSend={handleModeratedSend}
+         showWarning={true}
+       />
+       
+                                       {/* Backdrop overlay - Visible on all screen sizes when sidebar is open */}
+        {isMembersOpen && (
+          <div className="fixed inset-0 bg-black/60 z-30" onClick={() => setIsMembersOpen(false)} />
+        )}
+        
+        {/* Users Sidebar - Desktop */}
+        <div className={`${isMembersOpen ? 'flex' : 'hidden'} w-64 backdrop-blur-sm border-r border-gray-700/50 flex-col flex-shrink-0 h-full absolute inset-y-0 left-0 z-40`} style={{backgroundColor: '#181818'}}>
+                   {/* Room Header */}
+          <div className="p-4 lg:p-6 border-b border-gray-700/50 flex-shrink-0">
+            {/* Close button for mobile */}
+            <button
+              onClick={() => setIsMembersOpen(false)}
+              className="lg:hidden absolute top-4 right-4 text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700/40"
+              title="Close sidebar"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+           <div className="mb-4 text-left">
+             <div className="flex-1 min-w-0">
+               <h2 className="text-lg font-bold text-white/90 mb-1 text-left">{room.roomName}</h2>
+               <p className="text-gray-400/70 text-sm mb-2 text-left">Private Room</p>
+               {isCreator && (
+                 <div className="flex items-center space-x-2 mb-3">
+                                       <p className="text-gray-400/70 text-xs text-left">Room Code: <span className="text-yellow-400 font-mono bg-yellow-400/20 px-2 py-1 rounded ml-2">{room.roomId}</span></p>
+                   <button
+                     onClick={handleCopyCode}
+                     className="text-gray-400/70 hover:text-yellow-400 transition-colors duration-200 p-1 rounded hover:bg-yellow-400/10"
+                     title="Copy room code"
+                   >
+                     {copied ? (
+                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                       </svg>
+                     ) : (
+                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                       </svg>
+                     )}
+                   </button>
+                 </div>
+               )}
+             </div>
+           </div>
+           <div className="flex items-center justify-between pt-3 border-t border-gray-700/30">
+             <span className="text-gray-400/70 text-sm font-medium">{roomUsers.length} members</span>
+             <button
+               onClick={handleLeaveClick}
+               className="text-red-400/70 hover:text-red-300 text-sm font-medium transition-all duration-200 px-3 py-1.5 rounded-lg hover:bg-red-900/20"
+             >
+               Leave Room
+             </button>
+           </div>
+         </div>
+
+         {/* Users List - Fixed height, scrollable if needed */}
+         <div className="flex-1 overflow-y-auto p-4 min-h-0">
+           <h3 className="text-sm font-medium text-gray-400/70 mb-4 uppercase tracking-wide border-b border-gray-700/30 pb-2">Members</h3>
+           <div className="space-y-2">
+             {roomUsers.map((user) => (
+               <div key={user.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-700/30 transition-all duration-200 group">
+                                   <div className="flex items-center space-x-3 flex-1 min-w-0">
+                    <div className="w-8 h-8 bg-gray-600/30 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-white/90 font-bold text-sm">
+                        {user.username.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0 text-left">
+                      <p className="text-white/90 font-medium text-sm truncate text-left">{user.username}</p>
+                      <p className="text-green-400/70 text-xs flex items-center text-left">
+                        <span className="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
+                        Online
+                      </p>
+                    </div>
+                  </div>
+                 {isCreator && user.username !== username && (
+                   <button
+                     onClick={() => handleRemoveUser(user.id, user.username)}
+                     className="text-gray-400/70 hover:text-red-400 hover:bg-red-900/20 p-2 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 flex-shrink-0"
+                     title={`Remove ${user.username} from room`}
+                   >
+                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                     </svg>
+                   </button>
+                 )}
+               </div>
+             ))}
+           </div>
+         </div>
+       </div>
+
+                                       {/* Chat Area */}
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* Header with hamburger menu - Only visible on mobile */}
+          <div className="lg:hidden bg-gray-800/60 backdrop-blur-sm border-b border-gray-700/50 p-3 flex items-center justify-between">
+            <div className="flex items-center space-x-3 min-w-0">
+              <button
+                onClick={() => setIsMembersOpen(true)}
+                className="text-gray-300 hover:text-white p-2 rounded-lg hover:bg-gray-700/40"
+                title="Show members"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h18M3 12h18M3 20h18" />
+                </svg>
+              </button>
+              <div className="min-w-0">
+                <h2 className="text-base font-bold text-white/90 truncate">{room.roomName}</h2>
+                <p className="text-gray-400/70 text-xs truncate">{roomUsers.length} members</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
               {isCreator && (
-                <div className="flex items-center space-x-2">
-                  <p className="text-gray-400/70 text-xs text-left">Room Code: <span className="text-yellow-400 font-mono">{room.roomId}</span></p>
+                <button
+                  onClick={handleCopyCode}
+                  className="text-gray-400/80 hover:text-yellow-400 p-2 rounded-lg hover:bg-gray-700/40"
+                  title="Copy room code"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              )}
+              <button
+                onClick={handleLeaveClick}
+                className="text-red-400/80 hover:text-red-300 p-2 rounded-lg hover:bg-red-900/20"
+                title="Leave room"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+        
+                 {/* Messages Container with WhatsApp-style layout - Scrollable */}
+                 <div 
+                   ref={messagesContainerRef}
+                   className="flex-1 overflow-y-auto p-2 lg:p-3 space-y-3 flex flex-col min-h-0 pb-4 relative z-20" 
+                   style={{ backgroundColor: '#212121' }}
+                 >
+                       {/* Hover-triggered Sidebar Toggle Icon - Only visible when sidebar is closed */}
+            {!isMembersOpen && (
+              <div className="absolute left-0 top-0 w-16 h-full z-10 pointer-events-none">
+                <div className="absolute left-4 top-1/2 transform -translate-y-1/2 w-12 h-12 bg-gray-700/80 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg pointer-events-auto">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+                <button
+                  onClick={() => setIsMembersOpen(true)}
+                  className="absolute left-0 top-0 w-16 h-full cursor-pointer pointer-events-auto hover:bg-gray-700/20 transition-all duration-200 group"
+                  title="Open sidebar"
+                />
+              </div>
+            )}
+          {messages.length === 0 ? (
+            <div className="text-center text-gray-400/70 py-12">
+              <div className="w-16 h-16 bg-gray-800/50 border border-gray-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-gray-500/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              </div>
+              <p className="text-lg font-medium">No messages yet</p>
+              <p className="text-sm">Be the first to start the conversation!</p>
+            </div>
+          ) : (
+            <>
+              {/* Scroll to bottom button - only show when user is not at bottom */}
+              {isUserScrolling && (
+                <div className="sticky top-2 z-30 flex justify-center">
                   <button
-                    onClick={handleCopyCode}
-                    className="text-gray-400/70 hover:text-yellow-400 transition-colors duration-200 p-1 rounded"
-                    title="Copy room code"
+                    onClick={handleScrollToBottom}
+                    className="bg-gray-700/80 hover:bg-gray-600/80 text-white/90 hover:text-white backdrop-blur-sm px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border border-gray-600/50 hover:border-gray-500/50 shadow-lg"
                   >
-                    {copied ? (
+                    <div className="flex items-center space-x-2">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
                       </svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    )}
+                      <span>New messages</span>
+                    </div>
                   </button>
                 </div>
               )}
-            </div>
-          </div>
-          <div className="flex items-center justify-between pt-2 border-t border-gray-700/30">
-            <span className="text-gray-400/70 text-sm font-medium">{roomUsers.length} members</span>
-            <button
-              onClick={handleLeaveClick}
-              className="text-red-400/70 hover:text-red-300 text-sm font-medium transition-all duration-200 px-3 py-1.5 rounded-lg hover:bg-red-900/20"
-            >
-              Leave Room
-            </button>
-          </div>
-        </div>
-
-        {/* Users List - Fixed height, scrollable if needed */}
-        <div className="flex-1 overflow-y-auto p-4 min-h-0">
-          <h3 className="text-sm font-medium text-gray-400/70 mb-4 uppercase tracking-wide border-b border-gray-700/30 pb-2">Members</h3>
-          <div className="space-y-3">
-            {roomUsers.map((user) => (
-              <div key={user.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-700/30 transition-all duration-200 group">
-                <div className="flex items-center justify-start flex-1 min-w-0">
-                  <div className="flex-1 min-w-0 text-left">
-                    <p className="text-white/90 font-medium text-sm truncate">{user.username}</p>
-                    <p className="text-gray-400/70 text-xs">Online</p>
-                  </div>
-                </div>
-                {isCreator && user.username !== username && (
-                  <button
-                    onClick={() => handleRemoveUser(user.id, user.username)}
-                    className="text-gray-400/70 hover:text-red-400 hover:bg-red-900/20 p-2 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 flex-shrink-0"
-                    title={`Remove ${user.username} from room`}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Chat Area */}
-      <div className="flex-1 flex flex-col min-h-0">
-        {/* Mobile Header */}
-        <div className="lg:hidden sticky top-0 z-30 bg-gray-800/60 backdrop-blur-sm border-b border-gray-700/50 p-3 flex items-center justify-between">
-          <div className="flex items-center space-x-3 min-w-0">
-            <button
-              onClick={() => setIsMembersOpen(true)}
-              className="text-gray-300 hover:text-white p-2 rounded-lg hover:bg-gray-700/40"
-              title="Show members"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            <div className="min-w-0">
-              <h2 className="text-base font-bold text-white/90 truncate">{room.roomName}</h2>
-              <p className="text-gray-400/70 text-xs truncate">{roomUsers.length} members</p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            {isCreator && (
-              <button
-                onClick={handleCopyCode}
-                className="text-gray-400/80 hover:text-yellow-400 p-2 rounded-lg hover:bg-gray-700/40"
-                title="Copy room code"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-              </button>
-            )}
-            <button
-              onClick={handleLeaveClick}
-              className="text-red-400/80 hover:text-red-300 p-2 rounded-lg hover:bg-red-900/20"
-              title="Leave room"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        
-        {/* Messages Scroll Area */}
-        <div className="flex-1 overflow-y-auto p-3 lg:p-6 min-h-0">
-          {messages.length === 0 ? (
-            <div className="text-center text-gray-400/70 py-16">
-              <p className="text-xl font-medium mb-2">No messages yet</p>
-              <p className="text-sm text-gray-500/70">Start your private room conversation!</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {messages.map((message) => (
+              
+              <div className="space-y-4">
+                {messages.map((message) => (
                 <div key={message.id} className={`flex ${isCurrentUser(message.username) ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-xs lg:max-w-md ${isCurrentUser(message.username) ? 'text-right' : 'text-left'}`}>
                     {/* Message bubble */}
                     <div className={`relative group ${isCurrentUser(message.username) ? 'ml-auto' : 'mr-auto'}`}>
-                      <div className={`
-                        ${isCurrentUser(message.username) 
-                          ? 'bg-green-600/20 border-green-500/30 text-white/90' 
-                          : 'bg-message-bg/40 border-gray-700/30 text-white/90'
-                        } 
-                        backdrop-blur-sm rounded-2xl px-3 py-2 border break-words inline-block max-w-full
-                      `}>
+                                             <div className="text-white/90 rounded-2xl px-3 py-2 break-words inline-block max-w-full" style={{backgroundColor: '#303030'}}>
                         <p className="text-sm leading-relaxed mb-2">
                           {message.message}
                         </p>
@@ -524,19 +637,25 @@ const PrivateRoom = (props) => {
               ))}
               <div ref={messagesEndRef} />
             </div>
+            </>
           )}
         </div>
 
-        {/* Message Input */}
-        <div className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-3 lg:p-6 flex-shrink-0">
-          <form onSubmit={handleSendMessage} className="flex items-center space-x-2 lg:space-x-4">
+        {/* Twitter-style Message Input - Sticky position */}
+        <div 
+          className="backdrop-blur-sm p-4 lg:p-6 flex-shrink-0 sticky bottom-0 z-50"
+          style={{ backgroundColor: '#303030' }}
+          onClick={() => { inputRef.current?.focus(); }}
+        >
+          <form onSubmit={handleSendMessage} className="flex space-x-3">
             <input
               type="text"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Type your message..."
-              className="flex-1 px-3 py-2 lg:px-4 lg:py-3 rounded-xl text-sm lg:text-base transition-all duration-150 bg-[#303030] border border-gray-600/50 text-white/90 placeholder-gray-400/70 focus:ring-2 focus:ring-green-500/50 focus:border-green-500/50 focus:outline-none"
               disabled={isSending}
+              className="flex-1 text-white px-4 py-3 rounded-2xl border-2 border-[#202020] focus:border-[#303030] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: '#202020' }}
               ref={inputRef}
               autoFocus={isDesktop}
               onBlur={() => { if (isDesktop) setTimeout(focusInput, 0); }}
@@ -544,20 +663,24 @@ const PrivateRoom = (props) => {
             <button
               type="submit"
               disabled={!newMessage.trim() || isSending}
-              className={`px-4 py-2 lg:px-6 lg:py-3 rounded-xl font-medium transition-all duration-200 text-sm lg:text-base flex items-center justify-center min-w-[72px] lg:min-w-[80px] ${
-                newMessage.trim() && !isSending
-                  ? 'bg-green-600/20 hover:bg-green-600/30 text-green-400 hover:text-green-300 border border-green-500/30 hover:border-green-500/50 shadow-lg hover:shadow-green-500/10'
-                  : 'bg-gray-600/20 text-gray-500 border border-gray-500/30 cursor-not-allowed'
-              }`}
+              className="bg-gray-600 hover:bg-gray-500 text-white px-6 py-3 rounded-2xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              onMouseDown={(e) => {
+                // Prevent button from stealing focus before submit
+                e.preventDefault();
+              }}
             >
               {isSending ? (
                 <div className="flex items-center space-x-2">
-                  <svg className="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-gray-400/70 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                   <span>Sending...</span>
                 </div>
-              ) : 'Send'}
+              ) : (
+                <span className="material-symbols-outlined text-white text-2xl">
+                  send
+                </span>
+              )}
             </button>
           </form>
         </div>

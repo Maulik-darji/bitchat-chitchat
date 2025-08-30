@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import firebaseService from '../lib/firebase';
 
 const PrivateChatsList = ({ username, onChatSelect }) => {
@@ -150,7 +151,8 @@ const PrivateChatsList = ({ username, onChatSelect }) => {
               onMouseEnter={() => setHoveredChat(chat.id)}
               onMouseLeave={() => setHoveredChat(null)}
             >
-              <button
+              <Link
+                to={`/chat/${chat.id}`}
                 onClick={() => {
                   if (otherUsername && onChatSelect) {
                     onChatSelect(otherUsername);
@@ -171,7 +173,7 @@ const PrivateChatsList = ({ username, onChatSelect }) => {
                     {chat.lastMessageAt ? formatLastMessageTime(chat.lastMessageAt) : 'No messages yet'}
                   </p>
                 </div>
-              </button>
+              </Link>
               
               {/* Remove User Button - Only visible on hover */}
               {hoveredChat === chat.id && (

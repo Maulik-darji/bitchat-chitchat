@@ -19,6 +19,9 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
   const [copiedMessageId, setCopiedMessageId] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
 
   
 
@@ -27,9 +30,44 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Check if user is at the bottom of the chat
+  const isAtBottom = () => {
+    if (!messagesContainerRef.current) return true;
+    const container = messagesContainerRef.current;
+    const threshold = 100; // 100px threshold to consider "at bottom"
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+  };
+
+  // Handle scroll events to detect user scrolling
+  const handleScroll = () => {
+    if (messagesContainerRef.current) {
+      const atBottom = isAtBottom();
+      setShouldAutoScroll(atBottom);
+      setIsUserScrolling(!atBottom);
+    }
+  };
+
+  // Smart scroll that only auto-scrolls when appropriate
+  const smartScrollToBottom = () => {
+    if (shouldAutoScroll) {
+      scrollToBottom();
+    }
+  };
+
+  // Handle when user manually scrolls to bottom
+  const handleScrollToBottom = () => {
+    setShouldAutoScroll(true);
+    setIsUserScrolling(false);
+    scrollToBottom();
+  };
+
   useEffect(() => {
     const unsubscribe = firebaseService.onPublicChatsUpdate((messageList) => {
       setMessages(messageList);
+      // Emit message count to parent component
+      window.dispatchEvent(new CustomEvent('messageCountUpdate', { 
+        detail: { count: messageList.length } 
+      }));
     });
 
     // Listen for refresh event from main header
@@ -45,19 +83,22 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    // Only auto-scroll if user is at bottom or if this is the first load
+    if (messages.length > 0 && shouldAutoScroll) {
+      smartScrollToBottom();
+    }
+  }, [messages, shouldAutoScroll]);
 
   // Add a more robust scroll mechanism for new messages
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > 0 && shouldAutoScroll) {
       // Small delay to ensure DOM is updated
       const timer = setTimeout(() => {
-        scrollToBottom();
+        smartScrollToBottom();
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [messages.length]);
+  }, [messages.length, shouldAutoScroll]);
 
   // Update spam status periodically
   useEffect(() => {
@@ -88,6 +129,15 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
         inputRef.current.focus();
       }
     }, 100);
+  }, []);
+
+  // Add scroll event listener to detect user scrolling
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
   }, []);
 
   // Remove the auto-re-focus effect that was causing the persistent focus
@@ -146,6 +196,10 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
       
       // Clear reply state AFTER successful send
       setReplyingTo(null);
+      
+      // Auto-scroll to bottom when user sends a message
+      setShouldAutoScroll(true);
+      setIsUserScrolling(false);
     } catch (error) {
       console.error('Error sending message:', error);
       setSpamError(error.message);
@@ -362,7 +416,11 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
       />
 
       {/* Messages Container with WhatsApp-style layout - Scrollable */}
-      <div className="flex-1 overflow-y-auto p-2 lg:p-3 space-y-3 flex flex-col min-h-0 pb-4 relative z-20" style={{ backgroundColor: '#212121' }}>
+      <div 
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto p-2 lg:p-3 space-y-3 flex flex-col min-h-0 pb-4 relative z-20" 
+        style={{ backgroundColor: '#212121' }}
+      >
         {messages.length === 0 ? (
           <div className="text-center text-gray-400/70 py-12">
             <div className="w-16 h-16 bg-gray-800/50 border border-gray-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -375,11 +433,28 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
           </div>
         ) : (
           <>
+            {/* Scroll to bottom button - only show when user is not at bottom */}
+            {isUserScrolling && (
+              <div className="sticky top-2 z-30 flex justify-center">
+                <button
+                  onClick={handleScrollToBottom}
+                  className="bg-gray-700/80 hover:bg-gray-600/80 text-white/90 hover:text-white backdrop-blur-sm px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border border-gray-600/50 hover:border-gray-500/50 shadow-lg"
+                >
+                  <div className="flex items-center space-x-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                    </svg>
+                    <span>New messages</span>
+                  </div>
+                </button>
+              </div>
+            )}
+            
             {messages.map((message) => (
               <div key={message.id} className={`flex ${isCurrentUser(message.username) ? 'justify-end' : 'justify-start'}`}>
                 {editingMessage === message.id ? (
                   <div className="max-w-xs lg:max-w-md relative z-[9998]">
-                    <div className="bg-gray-800/40 backdrop-blur-sm rounded-lg p-4 border border-gray-700/30">
+                                         <div className="backdrop-blur-sm rounded-lg p-4 border" style={{ backgroundColor: '#303030', borderColor: '#202020' }}>
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
@@ -392,13 +467,14 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
                           </div>
                           <span className="text-yellow-400/80 text-xs font-medium">Editing...</span>
                         </div>
-                        <textarea
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          className="w-full bg-gray-700/50 border border-gray-600/50 rounded-lg p-3 text-white/90 resize-none focus:ring-2 focus:ring-gray-500/50 focus:border-gray-500/50 transition-all duration-200"
-                          rows="3"
-                          autoFocus
-                        />
+                                                 <textarea
+                           value={editText}
+                           onChange={(e) => setEditText(e.target.value)}
+                           className="w-full rounded-lg p-3 text-white/90 resize-none focus:ring-2 focus:ring-gray-500/50 focus:border-gray-500/50 transition-all duration-200"
+                           style={{ backgroundColor: '#202020', border: '1px solid #202020' }}
+                           rows="3"
+                           autoFocus
+                         />
                         <div className="flex space-x-2">
                           <button
                             onClick={() => handleEditMessage(message.id, editText)}
@@ -487,8 +563,8 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
                              right: isCurrentUser(message.username) ? '-8px' : 'auto',
                              zIndex: 99999
                            }}>
-                        <div className="bg-gray-800/95 backdrop-blur-sm border border-gray-600/50 rounded-lg shadow-2xl p-2" style={{ minWidth: '120px' }}>
-                          <div className="flex flex-col space-y-1">
+                                                 <div className="backdrop-blur-sm border rounded-lg shadow-2xl p-2" style={{ minWidth: '120px', backgroundColor: '#303030', borderColor: '#202020' }}>
+                           <div className="flex flex-col space-y-1" style={{ minWidth: '150px' }}>
                             {/* Reply Button */}
                             <button
                               onClick={() => handleReply(message)}
@@ -593,7 +669,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
              onChange={(e) => setNewMessage(e.target.value)}
              placeholder="Type your message..."
              disabled={isSending || !spamStatus.canSend}
-             className="flex-1 text-white px-4 py-3 rounded-2xl border-2 border-[#202020] focus:border-gray-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+             className="flex-1 text-white px-4 py-3 rounded-2xl border-2 border-[#202020] focus:border-[#303030] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
              style={{ backgroundColor: '#202020' }}
              ref={inputRef}
              onKeyDown={(e) => {

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import InviteModal from './InviteModal';
 import InvitesSection from './InvitesSection';
 import PrivateChatsList from './PrivateChatsList';
@@ -10,6 +11,8 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const location = useLocation();
+
 
   // Helper function to create responsive icons
   const createResponsiveIcon = (svgPath) => (
@@ -24,6 +27,7 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
     { 
       id: 'home', 
       label: 'Home', 
+      path: '/',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -33,6 +37,7 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
     { 
       id: 'join-room', 
       label: 'Join Private Room', 
+      path: '/join-room',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
@@ -42,6 +47,7 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
     { 
       id: 'create-room', 
       label: 'Create Private Room', 
+      path: '/create-room',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -51,6 +57,7 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
     { 
       id: 'invite-user', 
       label: 'Invite User for Private Chat', 
+      path: '/invite-user',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
@@ -135,8 +142,9 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
         sidebarWidth < 280 ? 'p-2' : sidebarWidth < 320 ? 'p-2.5' : 'p-3 lg:p-4'
       }`}>
         {menuItems.map((item) => (
-          <button
+          <Link
             key={item.id}
+            to={item.path}
             onClick={() => {
               if (item.id === 'invite-user') {
                 handleInviteClick();
@@ -147,9 +155,7 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
             className={`w-full flex items-center rounded-full transition-all duration-200 text-left ${
               currentView === item.id
                 ? 'bg-gray-600/20 text-gray-300 border border-gray-500/30'
-                : item.id === 'invite-user'
-                  ? 'text-gray-300 hover:bg-[#414071] hover:text-white/90'
-                  : 'text-gray-300 hover:bg-gray-800/50 hover:text-white/90'
+                : 'text-gray-300 hover:bg-[#303030] hover:text-white/90'
             } ${
               sidebarWidth < 280 ? 'space-x-1.5 px-2 py-1.5' : sidebarWidth < 320 ? 'space-x-2 px-2.5 py-2' : 'space-x-2 lg:space-x-3 px-3 lg:px-4 py-2 lg:py-3'
             }`}
@@ -158,7 +164,7 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
             <span className={`font-semibold ${
               sidebarWidth < 280 ? 'text-xs' : sidebarWidth < 320 ? 'text-sm' : 'text-sm lg:text-base'
             }`}>{item.label}</span>
-          </button>
+          </Link>
         ))}
 
         {/* Invites Section */}
@@ -215,6 +221,7 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
               sidebarWidth < 280 ? 'text-xs' : sidebarWidth < 320 ? 'text-xs' : 'text-xs lg:text-sm'
             }`}>Online</p>
           </div>
+
           <button
             onClick={() => setShowEditModal(true)}
             className="text-gray-400/70 hover:text-white/90 p-1 rounded transition-all duration-200"
@@ -241,7 +248,7 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
               value={newUsername}
               onChange={(e) => setNewUsername(e.target.value)}
               placeholder="Enter new username"
-              className={`w-full bg-gray-700/50 border border-gray-600/50 rounded-lg text-white/90 placeholder-gray-400/70 focus:ring-2 focus:ring-gray-500/50 focus:border-gray-500/50 transition-all duration-200 mb-2 ${
+              className={`w-full bg-gray-700/50 border border-gray-700/50 rounded-lg text-white/90 placeholder-gray-400/70 focus:ring-2 focus:ring-gray-500/50 focus:border-gray-500/50 transition-all duration-200 mb-2 ${
                 sidebarWidth < 280 ? 'px-2 py-1.5 text-xs mb-1.5' : sidebarWidth < 320 ? 'px-2.5 py-2 text-sm mb-2' : 'px-3 py-2 lg:mb-3 text-sm lg:text-base'
               }`}
               autoFocus
@@ -250,7 +257,7 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
               <button
                 onClick={handleEditUsername}
                 disabled={isSaving}
-                className={`bg-gray-600/20 hover:bg-gray-600/30 text-gray-300 hover:text-gray-200 rounded-lg transition-all duration-200 border border-gray-500/30 hover:border-gray-500/50 disabled:opacity-50 ${
+                className={`bg-gray-600/20 hover:bg-gray-600/30 text-gray-300 hover:text-gray-200 rounded-lg transition-all duration-200 border border-gray-700/50 hover:border-gray-600/50 disabled:opacity-50 ${
                   sidebarWidth < 280 ? 'px-1.5 py-1 text-xs' : sidebarWidth < 320 ? 'px-2 py-1 text-xs' : 'px-2 lg:px-3 py-1 lg:py-1.5 text-xs lg:text-sm'
                 }`}
               >

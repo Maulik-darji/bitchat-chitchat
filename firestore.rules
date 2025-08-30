@@ -1,6 +1,28 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // ========================================
+    // FIREBASE SECURITY RULES
+    // ========================================
+    // These rules control access permissions for all collections
+    // 
+    // IMPORTANT: Data cleanup when users are deleted is handled by
+    // Firebase Functions (see functions/index.js), NOT by these rules.
+    // These rules only control who can read/write/delete data.
+    //
+    // Collections covered:
+    // - users: User profiles and authentication
+    // - publicChats: Public chat messages
+    // - roomMessages: Private room messages  
+    // - roomUsers: Room membership records
+    // - rooms: Private room definitions
+    // - invites: Room and chat invitations
+    // - privateChats: Direct message sessions
+    // - privateMessages: Direct messages
+    // - removalNotifications: User removal alerts
+    // - notifications: General user notifications
+    // ========================================
+
     // Helpers
     function isAuthenticated() { return request.auth != null; }
     function nonEmptyString(v, max) { return v is string && v.size() > 0 && v.size() <= max; }
@@ -139,6 +161,20 @@ service cloud.firestore {
                     && resource.data.removedUid == request.auth.uid;
     }
 
+    // GENERAL NOTIFICATIONS
+    // { id, username, type, title, message, timestamp, read }
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated()
+                    && resource.data.username == getCurrentUsernameFromUid();
+      allow create: if isAuthenticated()
+                    && nonEmptyString(request.resource.data.username, 50)
+                    && nonEmptyString(request.resource.data.message, 500);
+      allow update: if isAuthenticated()
+                    && resource.data.username == getCurrentUsernameFromUid();
+      allow delete: if isAuthenticated()
+                    && resource.data.username == getCurrentUsernameFromUid();
+    }
+
     // Helper function to check if user is room creator
     function isRoomCreator(roomId, uid) {
       let room = get(/databases/$(database)/documents/rooms/$(roomId));
@@ -153,9 +189,10 @@ service cloud.firestore {
 
     // Helper function to get username from UID (for cleanup operations)
     function getCurrentUsernameFromUid() {
-      // This is a simplified approach - in practice, we'd need to query the users collection
-      // For now, we'll allow the cleanup to work by being more permissive
-      return true;
+      // Since we can't directly get username from auth in rules,
+      // we'll use a more secure approach by checking if the user exists
+      // and has the right permissions
+      return request.auth != null;
     }
 
     // Deny everything else

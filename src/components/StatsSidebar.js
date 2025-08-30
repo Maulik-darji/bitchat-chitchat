@@ -50,7 +50,7 @@ const StatsSidebar = () => {
 
       <div className="space-y-4">
         {/* Total Users */}
-        <div className="bg-gray-800/40 backdrop-blur-sm rounded-2xl p-4 border border-gray-700/30">
+        <div className="backdrop-blur-sm rounded-2xl p-4 border border-gray-700/30" style={{backgroundColor: '#303030'}}>
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <div className="w-3 h-3 bg-gray-500 rounded-full mr-3"></div>
@@ -61,7 +61,7 @@ const StatsSidebar = () => {
         </div>
 
         {/* Active Users */}
-        <div className="bg-gray-800/40 backdrop-blur-sm rounded-2xl p-4 border border-gray-700/30">
+        <div className="backdrop-blur-sm rounded-2xl p-4 border border-gray-700/30" style={{backgroundColor: '#303030'}}>
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
@@ -77,7 +77,7 @@ const StatsSidebar = () => {
         <button
           onClick={handleRefresh}
           disabled={isRefreshing}
-          className="w-full bg-gray-700/50 hover:bg-gray-700/70 disabled:bg-gray-600/20 text-gray-200 py-3 px-4 rounded-full transition-all duration-200 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full bg-[#303030] hover:bg-gray-700/70 disabled:bg-gray-600/20 text-gray-200 py-3 px-4 rounded-full transition-all duration-200 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isRefreshing ? (
             <>

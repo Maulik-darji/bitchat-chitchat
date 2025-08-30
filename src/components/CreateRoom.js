@@ -44,15 +44,16 @@ const CreateRoom = ({ username, onCreateRoom, onClose }) => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="roomName" className="block text-sm font-medium text-gray-300 mb-2">
-              Room Name
+              Room Code
             </label>
             <input
               type="text"
               id="roomName"
               value={roomName}
               onChange={(e) => setRoomName(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent text-white placeholder-gray-400"
-              placeholder="Enter room name"
+              className="w-full px-4 py-3 border border-gray-700/50 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent text-white placeholder-gray-400"
+              style={{backgroundColor: '#303030'}}
+              placeholder="Enter Room Code"
               disabled={isCreating}
             />
           </div>
@@ -66,7 +67,8 @@ const CreateRoom = ({ username, onCreateRoom, onClose }) => {
           <button
             type="submit"
             disabled={isCreating || !roomName.trim()}
-            className="w-full bg-gray-600 hover:bg-gray-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-colors"
+            className="w-full disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-colors"
+            style={{backgroundColor: '#414071'}}
           >
             {isCreating ? 'Creating...' : 'Create Room'}
           </button>

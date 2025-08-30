@@ -1,7 +1,9 @@
 // Content Filter for Chat Messages
 // This utility provides functions to filter out vulgar and inappropriate content
+// Now integrated with AI-based moderation for better multi-language support
 
 import { FILTER_CONFIG, CUSTOM_FILTER_RULES } from './contentFilterConfig';
+import { moderateContent, getModerationReport } from './aiModeration';
 
 // List of vulgar/inappropriate words to filter
 const VULGAR_WORDS = [
@@ -232,9 +234,109 @@ export function getFilterMessage(vulgarWords) {
   }
 }
 
+/**
+ * Check if a message contains vulgar or inappropriate content using AI moderation
+ * @param {string} message - The message to check
+ * @returns {Promise<Object>} - Object with isClean (boolean) and filteredMessage (string)
+ */
+export async function filterMessageAI(message) {
+  if (!message || typeof message !== 'string') {
+    return { isClean: true, filteredMessage: message };
+  }
+
+  // Check if AI moderation is enabled
+  if (!FILTER_CONFIG.AI_MODERATION_ENABLED) {
+    // Fallback to traditional filtering
+    return filterMessage(message);
+  }
+
+  try {
+    // Use AI moderation
+    const moderationResult = await moderateContent(message);
+    const report = getModerationReport(moderationResult);
+    
+    if (moderationResult.isClean) {
+      return { isClean: true, filteredMessage: message, report };
+    } else {
+      // Create filtered message by replacing inappropriate content
+      let filteredMessage = message;
+      
+      // If AI detected specific categories, apply appropriate filtering
+      if (report.flaggedCategories.length > 0) {
+        // For high severity, replace with asterisks
+        if (report.severity === 'high') {
+          filteredMessage = '*'.repeat(message.length);
+        } else {
+          // For medium severity, try to clean specific parts
+          filteredMessage = cleanMessageByCategory(message, report.flaggedCategories);
+        }
+      }
+      
+      return { 
+        isClean: false, 
+        filteredMessage, 
+        report,
+        confidence: moderationResult.confidence,
+        language: report.language
+      };
+    }
+  } catch (error) {
+    console.error('AI moderation failed, falling back to traditional filtering:', error);
+    // Fallback to traditional filtering
+    return filterMessage(message);
+  }
+}
+
+/**
+ * Clean message based on flagged categories
+ * @param {string} message - Original message
+ * @param {Array} flaggedCategories - Categories flagged by AI
+ * @returns {string} - Cleaned message
+ */
+function cleanMessageByCategory(message, flaggedCategories) {
+  let cleanedMessage = message;
+  
+  // Apply different cleaning strategies based on categories
+  flaggedCategories.forEach(({ category, score }) => {
+    if (score > 0.8) {
+      // High confidence - replace with asterisks
+      if (category === 'hate' || category === 'sexual' || category === 'violence') {
+        cleanedMessage = cleanedMessage.replace(/./g, '*');
+      }
+    }
+  });
+  
+  return cleanedMessage;
+}
+
+/**
+ * Check if a message contains vulgar content without filtering it (AI version)
+ * @param {string} message - The message to check
+ * @returns {Promise<boolean>} - True if message is clean, false if it contains vulgar content
+ */
+export async function isMessageCleanAI(message) {
+  if (!message || typeof message !== 'string') {
+    return true;
+  }
+
+  if (!FILTER_CONFIG.AI_MODERATION_ENABLED) {
+    return isMessageClean(message);
+  }
+
+  try {
+    const moderationResult = await moderateContent(message);
+    return moderationResult.isClean;
+  } catch (error) {
+    console.error('AI moderation failed, falling back to traditional check:', error);
+    return isMessageClean(message);
+  }
+}
+
 export default {
   filterMessage,
+  filterMessageAI,
   isMessageClean,
+  isMessageCleanAI,
   getDetectedVulgarWords,
   getFilterMessage
 };

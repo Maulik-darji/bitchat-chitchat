@@ -166,7 +166,7 @@ const NotificationCenter = ({ username, isVisible, onClose }) => {
     >
       <div 
         ref={modalRef}
-        className="bg-gray-800 rounded-lg shadow-xl w-full max-w-xs mx-auto flex flex-col max-h-[70vh] sm:max-h-[60vh] lg:mt-20 lg:mr-4 lg:max-w-sm"
+        className="rounded-lg shadow-xl w-full max-w-xs mx-auto flex flex-col max-h-[70vh] sm:max-h-[60vh] lg:mt-20 lg:mr-4 lg:max-w-sm" style={{backgroundColor: '#303030'}}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

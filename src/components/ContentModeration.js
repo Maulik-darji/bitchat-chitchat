@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { filterMessage, getDetectedVulgarWords, getFilterMessage } from '../lib/contentFilter';
+import { filterMessageAI, isMessageCleanAI } from '../lib/contentFilter';
 
 const ContentModeration = ({ 
   message, 
@@ -7,34 +8,94 @@ const ContentModeration = ({
   onSend, 
   isVisible = false, 
   onClose,
-  showWarning = true 
+  showWarning = true,
+  useAI = true // New prop to enable/disable AI moderation
 }) => {
   const [filteredMessage, setFilteredMessage] = useState('');
   const [isClean, setIsClean] = useState(true);
   const [detectedWords, setDetectedWords] = useState([]);
   const [warningMessage, setWarningMessage] = useState('');
+  const [moderationReport, setModerationReport] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [language, setLanguage] = useState('en');
 
   useEffect(() => {
     if (message) {
-      const result = filterMessage(message);
-      setFilteredMessage(result.filteredMessage);
-      setIsClean(result.isClean);
+      setIsLoading(true);
       
-      if (!result.isClean) {
-        const words = getDetectedVulgarWords(message);
-        setDetectedWords(words);
-        setWarningMessage(getFilterMessage(words));
+      if (useAI) {
+        // Use AI moderation
+        filterMessageAI(message).then(result => {
+          setFilteredMessage(result.filteredMessage);
+          setIsClean(result.isClean);
+          setLanguage(result.language || 'en');
+          
+          if (result.report) {
+            setModerationReport(result.report);
+            setWarningMessage(getAIWarningMessage(result.report));
+          } else {
+            setModerationReport(null);
+            setWarningMessage('');
+          }
+          
+          // Fallback to traditional detection for backward compatibility
+          if (!result.isClean) {
+            const words = getDetectedVulgarWords(message);
+            setDetectedWords(words);
+          } else {
+            setDetectedWords([]);
+          }
+          
+          setIsLoading(false);
+        }).catch(error => {
+          console.error('AI moderation failed:', error);
+          // Fallback to traditional filtering
+          const result = filterMessage(message);
+          setFilteredMessage(result.filteredMessage);
+          setIsClean(result.isClean);
+          setLanguage('en');
+          setModerationReport(null);
+          
+          if (!result.isClean) {
+            const words = getDetectedVulgarWords(message);
+            setDetectedWords(words);
+            setWarningMessage(getFilterMessage(words));
+          } else {
+            setDetectedWords([]);
+            setWarningMessage('');
+          }
+          
+          setIsLoading(false);
+        });
       } else {
-        setDetectedWords([]);
-        setWarningMessage('');
+        // Use traditional filtering
+        const result = filterMessage(message);
+        setFilteredMessage(result.filteredMessage);
+        setIsClean(result.isClean);
+        setLanguage('en');
+        setModerationReport(null);
+        
+        if (!result.isClean) {
+          const words = getDetectedVulgarWords(message);
+          setDetectedWords(words);
+          setWarningMessage(getFilterMessage(words));
+        } else {
+          setDetectedWords([]);
+          setWarningMessage('');
+        }
+        
+        setIsLoading(false);
       }
     } else {
       setFilteredMessage('');
       setIsClean(true);
       setDetectedWords([]);
       setWarningMessage('');
+      setModerationReport(null);
+      setLanguage('en');
+      setIsLoading(false);
     }
-  }, [message]);
+  }, [message, useAI]);
 
   const handleSendFiltered = () => {
     if (isClean) {
@@ -45,11 +106,30 @@ const ContentModeration = ({
     }
   };
 
-
-
   const handleSendClean = () => {
     // Always send the filtered/cleaned version
     onSend(filteredMessage);
+  };
+
+  // Get AI-specific warning message
+  const getAIWarningMessage = (report) => {
+    if (!report) return '';
+    
+    const languageNames = {
+      'en': 'English',
+      'hi': 'Hindi',
+      'gu': 'Gujarati'
+    };
+    
+    const languageName = languageNames[report.language] || 'Unknown';
+    
+    if (report.severity === 'high') {
+      return `Your message contains highly inappropriate content in ${languageName}. Please rewrite your message completely.`;
+    } else if (report.severity === 'medium') {
+      return `Your message contains some inappropriate content in ${languageName}. Please review and edit before sending.`;
+    }
+    
+    return `Your message contains inappropriate content in ${languageName}. Please revise your message.`;
   };
 
   if (!isVisible || !message) {
@@ -61,7 +141,7 @@ const ContentModeration = ({
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Content Moderation Warning
+            {useAI ? 'AI Content Moderation' : 'Content Moderation Warning'}
           </h3>
           <button
             onClick={onClose}
@@ -73,7 +153,19 @@ const ContentModeration = ({
           </button>
         </div>
 
-        {showWarning && (
+        {isLoading && (
+          <div className="mb-4 text-center">
+            <div className="inline-flex items-center px-4 py-2 text-sm text-blue-600 bg-blue-100 rounded-md">
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Analyzing content with AI...
+            </div>
+          </div>
+        )}
+
+        {showWarning && !isLoading && (
           <div className="mb-4">
             <div className="flex items-center mb-3">
               <div className="flex-shrink-0">
@@ -83,7 +175,7 @@ const ContentModeration = ({
               </div>
               <div className="ml-3">
                 <h4 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                  Inappropriate Content Detected
+                  {useAI ? 'AI Detected Inappropriate Content' : 'Inappropriate Content Detected'}
                 </h4>
               </div>
             </div>
@@ -91,6 +183,21 @@ const ContentModeration = ({
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
               {warningMessage}
             </p>
+            
+            {useAI && moderationReport && (
+              <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900 rounded-md">
+                <p className="text-xs text-blue-800 dark:text-blue-200 mb-2">
+                  <strong>AI Analysis:</strong> {moderationReport.confidence > 0.8 ? 'High confidence' : 'Medium confidence'} detection
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  <strong>Language:</strong> {language === 'en' ? 'English' : language === 'hi' ? 'Hindi' : language === 'gu' ? 'Gujarati' : 'Unknown'}
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  <strong>Severity:</strong> {moderationReport.severity}
+                </p>
+              </div>
+            )}
+            
             <p className="text-sm text-red-600 dark:text-red-400 mb-3 font-medium">
               ⚠️ You must send the cleaned version. Original content with inappropriate language cannot be sent.
             </p>
@@ -151,7 +258,7 @@ const ContentModeration = ({
 
         <div className="mt-4 text-xs text-gray-500 dark:text-gray-400 text-center">
           <p>
-            Content moderation helps maintain a respectful environment for all users.
+            {useAI ? 'AI-powered content moderation helps maintain a respectful environment across multiple languages.' : 'Content moderation helps maintain a respectful environment for all users.'}
           </p>
           <p className="mt-1 text-red-500 dark:text-red-400 font-medium">
             Inappropriate content is automatically filtered and cannot be sent.
