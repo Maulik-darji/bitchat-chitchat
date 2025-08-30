@@ -58,13 +58,21 @@ if (missingFirebaseKeys.length) {
 }
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true,
-  databaseId: 'main'
-});
-const functions = getFunctions(app);
+let app, auth, db, functions;
+
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true,
+    databaseId: 'main'
+  });
+  functions = getFunctions(app);
+  console.log('Firebase initialized successfully');
+} catch (error) {
+  console.error('Error initializing Firebase:', error);
+  throw error;
+}
 
 // Function to clear Firestore cache (useful for debugging offline persistence issues)
 const clearFirestoreCache = async () => {
@@ -124,12 +132,9 @@ const clearExpiredCache = () => {
 // Clear expired cache entries every 2 minutes for better performance
 setInterval(clearExpiredCache, 120000);
 
-// Set up periodic stale session cleanup (every 2 minutes)
-setInterval(() => {
-  if (firebaseService) {
-    firebaseService.cleanupStaleSessions().catch(console.error);
-  }
-}, 120000);
+// Set up periodic stale session cleanup (every 30 seconds for NO DELAY updates)
+// This will be set up after the service is created
+let staleSessionCleanupInterval;
 
 // Spam protection configuration - OPTIMIZED FOR PERFORMANCE
 const SPAM_CONFIG = {
@@ -326,8 +331,7 @@ class FirebaseService {
         isOnline: true,
         isTabActive: true,
         lastSeen: serverTimestamp(),
-        lastTabActivity: serverTimestamp(),
-        lastHeartbeat: serverTimestamp()
+        lastTabActivity: serverTimestamp()
       });
       
       // Add to online users
@@ -373,8 +377,7 @@ class FirebaseService {
         isOnline: true,
         isTabActive: true,
         lastSeen: serverTimestamp(),
-        lastTabActivity: serverTimestamp(),
-        lastHeartbeat: serverTimestamp()
+        lastTabActivity: serverTimestamp()
       });
       
       // Add to online users
@@ -477,23 +480,7 @@ class FirebaseService {
     }
   }
 
-  /**
-   * Send heartbeat to keep user active
-   */
-  async sendHeartbeat(username) {
-    try {
-      const current = auth.currentUser;
-      if (!current) return;
 
-      const userRef = doc(db, COLLECTIONS.USERS, username);
-      await updateDoc(userRef, {
-        lastHeartbeat: serverTimestamp(),
-        uid: current.uid
-      });
-    } catch (error) {
-      console.error('Error sending heartbeat:', error);
-    }
-  }
 
   /**
    * Update user activity (called when user performs actions)
@@ -506,7 +493,6 @@ class FirebaseService {
       const userRef = doc(db, COLLECTIONS.USERS, username);
       await updateDoc(userRef, {
         lastSeen: serverTimestamp(),
-        lastHeartbeat: serverTimestamp(),
         uid: current.uid
       });
     } catch (error) {
@@ -1357,27 +1343,33 @@ class FirebaseService {
   }
 
   /**
-   * Get real-time active users count (users with recent activity)
+   * Get real-time active users count (excluding current user)
+   * Only counts users who have the website tab ACTIVE in their browser
    */
-  onActiveUsersCount(callback) {
+  onActiveUsersCount(callback, currentUsername = null) {
     const unsubscribe = onSnapshot(collection(db, COLLECTIONS.USERS), (snapshot) => {
       const now = Date.now();
-      const HEARTBEAT_TIMEOUT = 20000; // 20 seconds timeout for more accurate tracking
+      const ACTIVITY_TIMEOUT = 30000; // 30 seconds for ultra-responsive updates
       
       let activeUsers = 0;
       snapshot.forEach((doc) => {
         const userData = doc.data();
-        if (userData.isTabActive && userData.lastHeartbeat) {
-          const lastHeartbeat = userData.lastHeartbeat.toDate ? userData.lastHeartbeat.toDate().getTime() : userData.lastHeartbeat;
-          const timeSinceHeartbeat = now - lastHeartbeat;
+        if (currentUsername && userData.username === currentUsername) {
+          return;
+        }
+        // User is ONLY active if:
+        // 1. Tab is active (isTabActive: true)
+        // 2. Has recent activity within 30 seconds
+        // 3. Is marked as online
+        if (userData.isTabActive && userData.isOnline && userData.lastSeen) {
+          const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
+          const timeSinceLastSeen = now - lastSeen;
           
-          // User is active if tab is active and heartbeat is recent
-          if (timeSinceHeartbeat < HEARTBEAT_TIMEOUT) {
+          if (timeSinceLastSeen < ACTIVITY_TIMEOUT) {
             activeUsers++;
           }
         }
       });
-      
       callback(activeUsers);
     });
     this.unsubscribeFns.add(unsubscribe);
@@ -1388,13 +1380,14 @@ class FirebaseService {
   }
 
   /**
-   * Get comprehensive user statistics in real-time
+   * Get comprehensive user statistics in real-time (excluding current user)
+   * Active users are only those with ACTIVE tabs in their browsers
    */
-  onUserStats(callback) {
+  onUserStats(callback, currentUsername = null) {
     const unsubscribe = onSnapshot(collection(db, COLLECTIONS.USERS), (snapshot) => {
       const now = Date.now();
-      const HEARTBEAT_TIMEOUT = 20000; // 20 seconds timeout for more accurate tracking
-      const RECENT_ACTIVITY_TIMEOUT = 300000; // 5 minutes
+      const ACTIVITY_TIMEOUT = 30000; // 30 seconds for ultra-responsive updates
+      const RECENT_ACTIVITY_TIMEOUT = 300000; // 5 minutes for recent activity
       
       let totalUsers = snapshot.size;
       let activeUsers = 0;
@@ -1403,23 +1396,23 @@ class FirebaseService {
       
       snapshot.forEach((doc) => {
         const userData = doc.data();
-        
-        // Count online users
+        if (currentUsername && userData.username === currentUsername) {
+          totalUsers--;
+          return;
+        }
         if (userData.isOnline) {
           onlineUsers++;
         }
-        
-        // Count active users (tab active + recent heartbeat)
-        if (userData.isTabActive && userData.lastHeartbeat) {
-          const lastHeartbeat = userData.lastHeartbeat.toDate ? userData.lastHeartbeat.toDate().getTime() : userData.lastHeartbeat;
-          const timeSinceHeartbeat = now - lastHeartbeat;
+        // Count active users - ONLY those with ACTIVE tabs in their browsers
+        if (userData.isTabActive && userData.isOnline && userData.lastSeen) {
+          const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
+          const timeSinceLastSeen = now - lastSeen;
           
-          if (timeSinceHeartbeat < HEARTBEAT_TIMEOUT) {
+          if (timeSinceLastSeen < ACTIVITY_TIMEOUT) {
             activeUsers++;
           }
         }
-        
-        // Count users with recent activity
+        // Count recent users (within 5 minutes)
         if (userData.lastSeen) {
           const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
           const timeSinceLastSeen = now - lastSeen;
@@ -1429,14 +1422,7 @@ class FirebaseService {
           }
         }
       });
-      
-      callback({
-        totalUsers,
-        activeUsers,
-        onlineUsers,
-        recentUsers,
-        lastUpdated: new Date().toISOString()
-      });
+      callback({ totalUsers, activeUsers, onlineUsers, recentUsers, lastUpdated: new Date().toISOString() });
     });
     this.unsubscribeFns.add(unsubscribe);
     return () => {
@@ -2521,42 +2507,40 @@ class FirebaseService {
   }
 
   /**
-   * Get current user count - IMPROVED VERSION
-   * This method provides accurate counts by fetching directly from Firestore
+   * Get current user count statistics (excluding current user)
    */
-  async getCurrentUserCount() {
+  async getCurrentUserCount(currentUsername = null) {
     try {
-      console.log('Fetching accurate user count from Firestore...');
       const usersSnapshot = await getDocs(collection(db, COLLECTIONS.USERS));
-      const totalUsers = usersSnapshot.size;
+      let totalUsers = usersSnapshot.size;
       
-      // Count only truly active users (tab active and recent heartbeat)
+      // Count only truly active users - ONLY those with ACTIVE tabs in their browsers
       let activeUsers = 0;
       let onlineUsers = 0;
       let recentUsers = 0;
       const now = Date.now();
-      const HEARTBEAT_TIMEOUT = 20000; // 20 seconds timeout for more accurate tracking
+      const ACTIVITY_TIMEOUT = 30000; // 30 seconds for ultra-responsive updates
       const RECENT_ACTIVITY_TIMEOUT = 300000; // 5 minutes
       
       usersSnapshot.forEach((doc) => {
         const userData = doc.data();
-        
-        // Count online users
+        if (currentUsername && userData.username === currentUsername) {
+          totalUsers--;
+          return;
+        }
         if (userData.isOnline) {
           onlineUsers++;
         }
-        
-        // Count active users (tab active + recent heartbeat)
-        if (userData.isTabActive && userData.lastHeartbeat) {
-          const lastHeartbeat = userData.lastHeartbeat.toDate ? userData.lastHeartbeat.toDate().getTime() : userData.lastHeartbeat;
-          const timeSinceHeartbeat = now - lastHeartbeat;
+        // Count active users - ONLY those with ACTIVE tabs in their browsers
+        if (userData.isTabActive && userData.isOnline && userData.lastSeen) {
+          const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
+          const timeSinceLastSeen = now - lastSeen;
           
-          if (timeSinceHeartbeat < HEARTBEAT_TIMEOUT) {
+          if (timeSinceLastSeen < ACTIVITY_TIMEOUT) {
             activeUsers++;
           }
         }
-        
-        // Count users with recent activity
+        // Count recent users (within 5 minutes)
         if (userData.lastSeen) {
           const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
           const timeSinceLastSeen = now - lastSeen;
@@ -2567,26 +2551,16 @@ class FirebaseService {
         }
       });
       
-      const stats = {
+      return {
         totalUsers,
         activeUsers,
         onlineUsers,
         recentUsers,
         lastUpdated: new Date().toISOString()
       };
-      
-      console.log('User count stats:', stats);
-      return stats;
     } catch (error) {
       console.error('Error getting user count:', error);
-      return { 
-        totalUsers: 0, 
-        activeUsers: 0, 
-        onlineUsers: 0, 
-        recentUsers: 0,
-        lastUpdated: new Date().toISOString(),
-        error: error.message 
-      };
+      return { totalUsers: 0, activeUsers: 0, onlineUsers: 0, recentUsers: 0, lastUpdated: new Date().toISOString() };
     }
   }
 
@@ -4140,12 +4114,12 @@ class FirebaseService {
       
       roomUsersSnapshot.forEach((doc) => {
         const userData = doc.data();
-        if (userData.isOnline && userData.lastHeartbeat) {
-          const lastHeartbeat = userData.lastHeartbeat.toDate ? userData.lastHeartbeat.toDate().getTime() : userData.lastHeartbeat;
-          const timeSinceHeartbeat = Date.now() - lastHeartbeat;
+        if (userData.isOnline && userData.lastSeen) {
+          const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
+          const timeSinceLastSeen = Date.now() - lastSeen;
           
-          // User is online if heartbeat is recent (within 30 seconds)
-          if (timeSinceHeartbeat < 30000) {
+          // User is online if they have recent activity (within 5 minutes)
+          if (timeSinceLastSeen < 300000) {
             onlineUsers.push(userData.username);
           }
         }
@@ -4183,7 +4157,6 @@ class FirebaseService {
         isTabActive: false,
         lastSeen: serverTimestamp(),
         lastTabActivity: serverTimestamp(),
-        lastHeartbeat: serverTimestamp(),
         uid: current.uid
       });
       
@@ -4199,10 +4172,10 @@ class FirebaseService {
   /**
    * Clean up stale user sessions (called periodically)
    */
-  async cleanupStaleSessions() {
-    try {
-      const now = Date.now();
-      const STALE_TIMEOUT = 60000; // 1 minute
+           async cleanupStaleSessions() {
+           try {
+             const now = Date.now();
+             const STALE_TIMEOUT = 30000; // 30 seconds (consistent with new ACTIVITY_TIMEOUT)
       
       const usersSnapshot = await getDocs(collection(db, COLLECTIONS.USERS));
       const batch = writeBatch(db);
@@ -4210,12 +4183,13 @@ class FirebaseService {
       
       usersSnapshot.forEach((doc) => {
         const userData = doc.data();
-        if (userData.lastHeartbeat) {
-          const lastHeartbeat = userData.lastHeartbeat.toDate ? userData.lastHeartbeat.toDate().getTime() : userData.lastHeartbeat;
-          const timeSinceHeartbeat = now - lastHeartbeat;
+        if (userData.lastSeen) {
+          const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
+          const timeSinceLastSeen = now - lastSeen;
           
-          // If user hasn't sent heartbeat in over 1 minute, mark as inactive
-          if (timeSinceHeartbeat > STALE_TIMEOUT && userData.isOnline) {
+          // If user hasn't had activity in over 30 seconds, mark as inactive
+          // This ensures only truly active users are counted with NO DELAY
+          if (timeSinceLastSeen > STALE_TIMEOUT && userData.isOnline) {
             batch.update(doc.ref, {
               isOnline: false,
               isTabActive: false
@@ -4228,7 +4202,7 @@ class FirebaseService {
       
       if (cleanedCount > 0) {
         await batch.commit();
-        console.log(`Cleaned up ${cleanedCount} stale user sessions`);
+        console.log(`Cleaned up ${cleanedCount} stale user sessions (30-second timeout for NO DELAY updates)`);
       }
     } catch (error) {
       console.error('Error cleaning up stale sessions:', error);
@@ -4238,6 +4212,19 @@ class FirebaseService {
 
 // Create and export service instance
 const firebaseService = new FirebaseService();
+
+// Verify that the service was created with valid Firebase instances
+if (!firebaseService.auth || !firebaseService.db || !firebaseService.functions) {
+  throw new Error('Firebase service failed to initialize properly');
+}
+
+// Set up periodic stale session cleanup after service is created
+staleSessionCleanupInterval = setInterval(() => {
+  if (firebaseService) {
+    firebaseService.cleanupStaleSessions().catch(console.error);
+  }
+}, 30000);
+
 export default firebaseService;
 
 // Export db instance for use in other modules

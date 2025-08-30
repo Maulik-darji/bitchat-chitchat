@@ -378,11 +378,10 @@ const AppContent = () => {
     }
   };
 
-  // Tab visibility tracking and heartbeat system
+  // Real user activity tracking system (no more heartbeats!)
   useEffect(() => {
     if (!username) return;
 
-    let heartbeatInterval;
     let isTabActive = true;
 
     // Function to update tab status
@@ -391,21 +390,21 @@ const AppContent = () => {
       try {
         await firebaseService.updateUserTabStatus(username, active);
         if (active) {
-          // Send immediate heartbeat when tab becomes active
-          await firebaseService.sendHeartbeat(username);
+          // Update user activity when tab becomes active
+          await firebaseService.updateUserActivity(username);
         }
       } catch (error) {
         console.error('Error updating tab status:', error);
       }
     };
 
-    // Function to send heartbeat
-    const sendHeartbeat = async () => {
+    // Function to track real user activity
+    const trackUserActivity = async () => {
       if (isTabActive) {
         try {
-          await firebaseService.sendHeartbeat(username);
+          await firebaseService.updateUserActivity(username);
         } catch (error) {
-          console.error('Error sending heartbeat:', error);
+          console.error('Error updating user activity:', error);
         }
       }
     };
@@ -420,25 +419,37 @@ const AppContent = () => {
     const handleFocus = () => updateTabStatus(true);
     const handleBlur = () => updateTabStatus(false);
 
-    // Set up event listeners
+    // Real user activity event handlers
+    const handleUserActivity = () => {
+      // NO DELAY - immediate activity tracking for ultra-responsive updates
+      trackUserActivity();
+    };
+
+    // Set up event listeners for real user activity
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
     window.addEventListener('blur', handleBlur);
-
-    // Start heartbeat (every 10 seconds for more accurate tracking)
-    heartbeatInterval = setInterval(sendHeartbeat, 10000);
+    
+    // Track real user interactions (typing, scrolling, clicking, etc.)
+    document.addEventListener('keydown', handleUserActivity);
+    document.addEventListener('click', handleUserActivity);
+    document.addEventListener('scroll', handleUserActivity);
+    document.addEventListener('mousemove', handleUserActivity);
+    document.addEventListener('touchstart', handleUserActivity);
 
     // Initial status update
     updateTabStatus(true);
 
     // Cleanup function
     return () => {
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-      }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('keydown', handleUserActivity);
+      document.removeEventListener('click', handleUserActivity);
+      document.removeEventListener('scroll', handleUserActivity);
+      document.removeEventListener('mousemove', handleUserActivity);
+      document.removeEventListener('touchstart', handleUserActivity);
       
       // Set user as inactive when component unmounts
       if (username) {
@@ -453,15 +464,8 @@ const AppContent = () => {
 
     const handleBeforeUnload = async () => {
       try {
-        // Use sendBeacon for more reliable delivery during page unload
-        if (navigator.sendBeacon) {
-          const data = new FormData();
-          data.append('username', username);
-          data.append('action', 'userLeft');
-          navigator.sendBeacon('/api/user-left', data);
-        }
-        
-        // Use the new handleUserLeft method for better status tracking
+        // Immediately mark user as inactive when browser/tab closes
+        // This is the most reliable way to detect user departure with NO DELAY
         await firebaseService.handleUserLeft(username);
       } catch (error) {
         // Ignore errors during page unload
