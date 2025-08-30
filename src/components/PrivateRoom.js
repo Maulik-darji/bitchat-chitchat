@@ -782,11 +782,11 @@ const PrivateRoom = (props) => {
                             {message.message}
                           </p>
                           
-                          {/* Timestamp and message status */}
-                          <div className={`flex items-center space-x-2 ml-2 ${isCurrentUser(message.username) ? 'text-green-200/70' : 'text-gray-400/70'}`}>
-                            <span className="text-xs">
-                              {formatTime(message.timestamp)}
-                            </span>
+                                                     {/* Timestamp and message status */}
+                           <div className="flex items-center space-x-2 ml-2">
+                             <span className="text-xs text-gray-400">
+                               {formatTime(message.timestamp)}
+                             </span>
                             <MessageStatus 
                               status={message.status || 'sent'} 
                               timestamp={message.timestamp}
