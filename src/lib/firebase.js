@@ -208,28 +208,36 @@ class FirebaseService {
   /**
    * Initialize the Firebase service
    */
-  async initialize() {
-    if (this.isInitialized) return this.auth.currentUser;
-    if (this.initPromise) return this.initPromise;
-    
-    try {
-      this.initPromise = signInAnonymously(auth)
-        .then((userCredential) => {
-          this.isInitialized = true;
-          console.log('Firebase initialized successfully');
-          return userCredential.user;
-        })
-        .catch((error) => {
-          // Reset initPromise so subsequent attempts can retry
-          this.initPromise = null;
-          throw error;
-        });
-      return await this.initPromise;
-    } catch (error) {
-      console.error('Error initializing Firebase:', error);
-      throw error;
-    }
-  }
+    async initialize() {
+    if (this.isInitialized) {
+      console.log('Firebase already initialized, returning current user');
+      return this.auth.currentUser;
+    }
+    if (this.initPromise) {
+      console.log('Firebase initialization already in progress, waiting...');
+      return this.initPromise;
+    }
+    
+    try {
+      console.log('Starting Firebase initialization...');
+      this.initPromise = signInAnonymously(auth)
+        .then((userCredential) => {
+          this.isInitialized = true;
+          console.log('Firebase initialized successfully with user:', userCredential.user.uid);
+          return userCredential.user;
+        })
+        .catch((error) => {
+          // Reset initPromise so subsequent attempts can retry
+          this.initPromise = null;
+          console.error('Firebase initialization failed:', error);
+          throw error;
+        });
+      return await this.initPromise;
+    } catch (error) {
+      console.error('Error initializing Firebase:', error);
+      throw error;
+    }
+  }
 
   /**
    * Check if username is available
@@ -280,6 +288,12 @@ class FirebaseService {
       }
 
       console.log(`Attempting to create user: ${username} with UID: ${current.uid}`);
+      console.log('Current auth state:', {
+        uid: current.uid,
+        displayName: current.displayName,
+        email: current.email,
+        isAnonymous: current.isAnonymous
+      });
 
       // Check if username already exists with better error handling
       try {
@@ -324,7 +338,7 @@ class FirebaseService {
       }
 
       const userRef = doc(db, COLLECTIONS.USERS, username);
-      await setDoc(userRef, {
+      const userData = {
         username,
         uid: current.uid, // CRITICAL: Link to Auth UID
         createdAt: serverTimestamp(),
@@ -332,12 +346,32 @@ class FirebaseService {
         isTabActive: true,
         lastSeen: serverTimestamp(),
         lastTabActivity: serverTimestamp()
-      });
+      };
+      
+      console.log('Creating user document with data:', userData);
+      console.log('User document path:', userRef.path);
+      
+      try {
+        await setDoc(userRef, userData);
+        console.log('User document created successfully in Firestore');
+        
+        // Verify the document was created
+        const verifyDoc = await getDoc(userRef);
+        if (verifyDoc.exists()) {
+          console.log('User document verified in Firestore:', verifyDoc.data());
+        } else {
+          console.error('User document was not created in Firestore!');
+        }
+      } catch (setDocError) {
+        console.error('Error creating user document:', setDocError);
+        throw setDocError;
+      }
       
       // Add to online users
       onlineUsers.set(username, true);
       
       console.log(`User created successfully: ${username} with UID: ${current.uid}`);
+      console.log('User document created with fields:', Object.keys(userData));
       return username;
     } catch (error) {
       console.error('Error creating user:', error);
@@ -430,19 +464,27 @@ class FirebaseService {
   async updateUserStatus(username, isOnline) {
     try {
       const current = auth.currentUser;
-      if (!current) return;
+      if (!current) {
+        console.warn('No authenticated user for updateUserStatus:', username);
+        return;
+      }
 
       const userRef = doc(db, COLLECTIONS.USERS, username);
-      await updateDoc(userRef, {
+      const updateData = {
         isOnline,
         lastSeen: serverTimestamp(),
         uid: current.uid // Ensure UID is always present
-      });
+      };
+      
+      console.log(`Updating user status for ${username}:`, updateData);
+      await updateDoc(userRef, updateData);
       
       if (isOnline) {
         onlineUsers.set(username, true);
+        console.log(`User ${username} marked as online`);
       } else {
         onlineUsers.delete(username);
+        console.log(`User ${username} marked as offline`);
         // Also set tab as inactive when going offline
         await updateDoc(userRef, {
           isTabActive: false,
@@ -460,18 +502,26 @@ class FirebaseService {
   async updateUserTabStatus(username, isTabActive) {
     try {
       const current = auth.currentUser;
-      if (!current) return;
+      if (!current) {
+        console.warn('No authenticated user for updateUserTabStatus:', username);
+        return;
+      }
 
       const userRef = doc(db, COLLECTIONS.USERS, username);
-      await updateDoc(userRef, {
+      const updateData = {
         isTabActive,
         lastTabActivity: serverTimestamp(),
         uid: current.uid
-      });
+      };
+      
+      console.log(`Updating tab status for ${username}:`, updateData);
+      await updateDoc(userRef, updateData);
       
       if (isTabActive) {
         onlineUsers.set(username, true);
+        console.log(`User ${username} tab marked as active`);
       } else {
+        console.log(`User ${username} tab marked as inactive`);
         // Don't immediately remove from online users, wait for heartbeat timeout
         // This prevents flickering when switching tabs quickly
       }
@@ -488,13 +538,19 @@ class FirebaseService {
   async updateUserActivity(username) {
     try {
       const current = auth.currentUser;
-      if (!current) return;
+      if (!current) {
+        console.warn('No authenticated user for updateUserActivity:', username);
+        return;
+      }
 
       const userRef = doc(db, COLLECTIONS.USERS, username);
-      await updateDoc(userRef, {
+      const updateData = {
         lastSeen: serverTimestamp(),
         uid: current.uid
-      });
+      };
+      
+      console.log(`Updating user activity for ${username}:`, updateData);
+      await updateDoc(userRef, updateData);
     } catch (error) {
       console.error('Error updating user activity:', error);
     }
@@ -1352,24 +1408,67 @@ class FirebaseService {
       const ACTIVITY_TIMEOUT = 30000; // 30 seconds for ultra-responsive updates
       
       let activeUsers = 0;
+      let debugInfo = [];
+      
       snapshot.forEach((doc) => {
         const userData = doc.data();
         if (currentUsername && userData.username === currentUsername) {
           return;
         }
+        
+        // Debug: Log user data structure
+        const debug = {
+          username: userData.username,
+          isTabActive: userData.isTabActive,
+          isOnline: userData.isOnline,
+          lastSeen: userData.lastSeen,
+          lastSeenType: typeof userData.lastSeen,
+          hasToDate: !!userData.lastSeen?.toDate
+        };
+        
         // User is ONLY active if:
         // 1. Tab is active (isTabActive: true)
         // 2. Has recent activity within 30 seconds
         // 3. Is marked as online
         if (userData.isTabActive && userData.isOnline && userData.lastSeen) {
-          const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
-          const timeSinceLastSeen = now - lastSeen;
-          
-          if (timeSinceLastSeen < ACTIVITY_TIMEOUT) {
-            activeUsers++;
+          let lastSeen;
+          try {
+            lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
+            const timeSinceLastSeen = now - lastSeen;
+            
+            debug.lastSeenConverted = lastSeen;
+            debug.timeSinceLastSeen = timeSinceLastSeen;
+            debug.isWithinTimeout = timeSinceLastSeen < ACTIVITY_TIMEOUT;
+            
+            if (timeSinceLastSeen < ACTIVITY_TIMEOUT) {
+              activeUsers++;
+              debug.status = 'ACTIVE';
+            } else {
+              debug.status = 'TIMEOUT_EXPIRED';
+            }
+          } catch (error) {
+            debug.error = error.message;
+            debug.status = 'ERROR';
           }
+        } else {
+          debug.status = 'INACTIVE';
+          if (!userData.isTabActive) debug.reason = 'Tab not active';
+          if (!userData.isOnline) debug.reason = 'User not online';
+          if (!userData.lastSeen) debug.reason = 'No lastSeen timestamp';
         }
+        
+        debugInfo.push(debug);
       });
+      
+      // Log debug info for troubleshooting
+      console.log('🔍 Active Users Debug Info:', {
+        totalUsers: snapshot.size,
+        activeUsers,
+        now,
+        ACTIVITY_TIMEOUT,
+        debugInfo
+      });
+      
       callback(activeUsers);
     });
     this.unsubscribeFns.add(unsubscribe);
@@ -1393,6 +1492,7 @@ class FirebaseService {
       let activeUsers = 0;
       let onlineUsers = 0;
       let recentUsers = 0;
+      let debugInfo = [];
       
       snapshot.forEach((doc) => {
         const userData = doc.data();
@@ -1400,28 +1500,78 @@ class FirebaseService {
           totalUsers--;
           return;
         }
+        
+        // Debug: Log user data structure for troubleshooting
+        const debug = {
+          username: userData.username,
+          isTabActive: userData.isTabActive,
+          isOnline: userData.isOnline,
+          lastSeen: userData.lastSeen,
+          lastSeenType: typeof userData.lastSeen,
+          hasToDate: !!userData.lastSeen?.toDate
+        };
+        
         if (userData.isOnline) {
           onlineUsers++;
         }
         // Count active users - ONLY those with ACTIVE tabs in their browsers
         if (userData.isTabActive && userData.isOnline && userData.lastSeen) {
-          const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
-          const timeSinceLastSeen = now - lastSeen;
-          
-          if (timeSinceLastSeen < ACTIVITY_TIMEOUT) {
-            activeUsers++;
+          let lastSeen;
+          try {
+            lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
+            const timeSinceLastSeen = now - lastSeen;
+            
+            debug.lastSeenConverted = lastSeen;
+            debug.timeSinceLastSeen = timeSinceLastSeen;
+            debug.isWithinTimeout = timeSinceLastSeen < ACTIVITY_TIMEOUT;
+            
+            if (timeSinceLastSeen < ACTIVITY_TIMEOUT) {
+              activeUsers++;
+              debug.status = 'ACTIVE';
+            } else {
+              debug.status = 'TIMEOUT_EXPIRED';
+            }
+          } catch (error) {
+            debug.error = error.message;
+            debug.status = 'ERROR';
           }
+        } else {
+          debug.status = 'INACTIVE';
+          if (!userData.isTabActive) debug.reason = 'Tab not active';
+          if (!userData.isOnline) debug.reason = 'User not online';
+          if (!userData.lastSeen) debug.reason = 'No lastSeen timestamp';
         }
+        
         // Count recent users (within 5 minutes)
         if (userData.lastSeen) {
-          const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
-          const timeSinceLastSeen = now - lastSeen;
-          
-          if (timeSinceLastSeen < RECENT_ACTIVITY_TIMEOUT) {
-            recentUsers++;
+          try {
+            const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
+            const timeSinceLastSeen = now - lastSeen;
+            
+            if (timeSinceLastSeen < RECENT_ACTIVITY_TIMEOUT) {
+              recentUsers++;
+            }
+          } catch (error) {
+            console.warn('Error processing lastSeen for recent users:', error);
           }
         }
+        
+        debugInfo.push(debug);
       });
+      
+      // Log debug info for troubleshooting
+      console.log('🔍 User Stats Debug Info:', {
+        totalUsers: snapshot.size,
+        totalUsersExcludingCurrent: totalUsers,
+        activeUsers,
+        onlineUsers,
+        recentUsers,
+        currentUsername,
+        now,
+        ACTIVITY_TIMEOUT,
+        debugInfo
+      });
+      
       callback({ totalUsers, activeUsers, onlineUsers, recentUsers, lastUpdated: new Date().toISOString() });
     });
     this.unsubscribeFns.add(unsubscribe);
@@ -4171,39 +4321,58 @@ class FirebaseService {
 
   /**
    * Clean up stale user sessions (called periodically)
+   * Only updates the current user's document to comply with Firestore security rules
    */
-           async cleanupStaleSessions() {
-           try {
-             const now = Date.now();
-             const STALE_TIMEOUT = 30000; // 30 seconds (consistent with new ACTIVITY_TIMEOUT)
+  async cleanupStaleSessions() {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      const now = Date.now();
+      const STALE_TIMEOUT = 30000; // 30 seconds (consistent with new ACTIVITY_TIMEOUT)
       
-      const usersSnapshot = await getDocs(collection(db, COLLECTIONS.USERS));
-      const batch = writeBatch(db);
-      let cleanedCount = 0;
+      // Only get the current user's document to avoid permission issues
+      const userRef = doc(db, COLLECTIONS.USERS, currentUser.displayName || currentUser.email);
+      const userDoc = await getDoc(userRef);
       
-      usersSnapshot.forEach((doc) => {
-        const userData = doc.data();
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
         if (userData.lastSeen) {
           const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
           const timeSinceLastSeen = now - lastSeen;
           
-          // If user hasn't had activity in over 30 seconds, mark as inactive
-          // This ensures only truly active users are counted with NO DELAY
+          // If current user hasn't had activity in over 30 seconds, mark as inactive
           if (timeSinceLastSeen > STALE_TIMEOUT && userData.isOnline) {
-            batch.update(doc.ref, {
+            await updateDoc(userRef, {
               isOnline: false,
               isTabActive: false
             });
-            cleanedCount++;
+            
+            // Remove from local online users set
             onlineUsers.delete(userData.username);
+            console.log(`Marked current user as inactive due to stale session`);
           }
         }
-      });
-      
-      if (cleanedCount > 0) {
-        await batch.commit();
-        console.log(`Cleaned up ${cleanedCount} stale user sessions (30-second timeout for NO DELAY updates)`);
       }
+      
+      // Clean up local onlineUsers set for users who are no longer in the collection
+      // This is a local cleanup that doesn't require Firestore permissions
+      const localUsernames = Array.from(onlineUsers);
+      for (const username of localUsernames) {
+        try {
+          const userRef = doc(db, COLLECTIONS.USERS, username);
+          const userDoc = await getDoc(userRef);
+          
+          if (!userDoc.exists() || !userDoc.data().isOnline) {
+            onlineUsers.delete(username);
+          }
+        } catch (error) {
+          // If we can't read the user document, remove from local set
+          console.warn(`Could not verify user ${username} status, removing from local set`);
+          onlineUsers.delete(username);
+        }
+      }
+      
     } catch (error) {
       console.error('Error cleaning up stale sessions:', error);
     }

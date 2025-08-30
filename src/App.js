@@ -37,6 +37,7 @@ const AppContent = () => {
   const navigationRef = useRef(false); // More reliable navigation tracking
   const lastNavigationTime = useRef(0); // Track last navigation time for debouncing
   const [viewTransition, setViewTransition] = useState(false); // Smooth view transitions
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Mobile menu state
 
 
   // Handle URL changes and validate access
@@ -873,7 +874,7 @@ const AppContent = () => {
                   <div className="flex items-center space-x-3">
                     {/* Hamburger Menu - Mobile Only */}
                     <button
-                      onClick={() => setCurrentView('mobile-menu')}
+                      onClick={() => setIsMobileMenuOpen(true)}
                       className="lg:hidden text-gray-300 hover:text-white transition-colors p-1"
                     >
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -940,7 +941,7 @@ const AppContent = () => {
                   <div className="flex items-center space-x-3">
                     {/* Hamburger Menu - Mobile Only */}
                     <button
-                      onClick={() => setCurrentView('mobile-menu')}
+                      onClick={() => setIsMobileMenuOpen(true)}
                       className="lg:hidden text-gray-300 hover:text-white transition-colors p-1"
                     >
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1022,7 +1023,7 @@ const AppContent = () => {
                   <div className="flex items-center space-x-3">
                     {/* Hamburger Menu - Mobile Only */}
                     <button
-                      onClick={() => setCurrentView('mobile-menu')}
+                      onClick={() => setIsMobileMenuOpen(true)}
                       className="lg:hidden text-gray-300 hover:text-white transition-colors p-1"
                     >
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1104,14 +1105,18 @@ const AppContent = () => {
       </div>
 
       {/* Mobile Sidebar Overlay */}
-      {currentView === 'mobile-menu' && (
+      {isMobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-50 backdrop-blur-md" style={{ backgroundColor: '#181818' }}>
           <div className="flex h-full">
             {/* Sidebar Content */}
             <div className="w-64 h-full overflow-y-auto" style={{ backgroundColor: '#181818' }}>
               <Sidebar
                 currentView={currentView}
-                onViewChange={handleViewChange}
+                onViewChange={(newView) => {
+                  // Close mobile menu when a view is selected
+                  setIsMobileMenuOpen(false);
+                  handleViewChange(newView);
+                }}
                 username={username}
                 onLogout={handleLogout}
                 isLoggingOut={isLoggingOut}
@@ -1120,12 +1125,13 @@ const AppContent = () => {
                 onRoomSelect={(room) => {
                   setCurrentRoom({ id: room.id, name: room.name });
                   setCurrentView('private-room');
+                  setIsMobileMenuOpen(false);
                 }}
               />
             </div>
 
             {/* Tap to close area */}
-            <div className="flex-1" onClick={() => setCurrentView('home')}></div>
+            <div className="flex-1" onClick={() => setIsMobileMenuOpen(false)}></div>
           </div>
         </div>
       )}

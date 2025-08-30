@@ -165,7 +165,15 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
           }`}>Basicaly</h1>
           {/* Close Button - Mobile Only */}
           <button
-            onClick={() => onViewChange('home')}
+            onClick={() => {
+              // Check if we're in mobile context by looking at the parent container
+              const isMobile = window.innerWidth < 1024; // lg breakpoint
+              if (isMobile) {
+                // In mobile context, we need to close the mobile menu
+                // The parent component will handle this through onViewChange
+                onViewChange('home');
+              }
+            }}
             className="lg:hidden absolute right-0 text-gray-400 hover:text-white transition-colors p-1"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

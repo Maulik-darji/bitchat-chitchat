@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import firebaseService from '../lib/firebase';
 
-const StatsSidebar = () => {
+const StatsSidebar = ({ username }) => {
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeUsers: 0,
@@ -12,6 +12,7 @@ const StatsSidebar = () => {
 
   useEffect(() => {
     // Use the new comprehensive user stats method for real-time updates
+    // Pass the current username to exclude it from the count
     const unsubscribe = firebaseService.onUserStats((userStats) => {
       // Display activeUsers instead of onlineUsers for more accurate count
       setStats({
@@ -20,16 +21,16 @@ const StatsSidebar = () => {
         lastUpdated: userStats.lastUpdated
       });
       setIsLoading(false);
-    });
+    }, username); // Pass username to exclude current user
 
     return () => unsubscribe();
-  }, []);
+  }, [username]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     
     try {
-      const currentStats = await firebaseService.getCurrentUserCount();
+      const currentStats = await firebaseService.getCurrentUserCount(username);
       // Display activeUsers instead of onlineUsers for more accurate count
       setStats({
         totalUsers: currentStats.totalUsers,
