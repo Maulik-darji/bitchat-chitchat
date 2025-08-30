@@ -61,7 +61,7 @@ service cloud.firestore {
     }
 
     // ROOM MESSAGES
-    // { id, roomId, uid, username, message, timestamp, editedAt? }
+    // { id, roomId, uid, username, message, timestamp, editedAt?, status?, readAt? }
     match /roomMessages/{messageId} {
       allow read: if isAuthenticated();
 
@@ -71,8 +71,16 @@ service cloud.firestore {
                     && nonEmptyString(request.resource.data.message, 1000)
                     && request.resource.data.uid == request.auth.uid;
 
-      allow update: if isAuthenticated()
-                    && resource.data.uid == request.auth.uid;
+      // Allow users to update message status (read/delivered) if they're authenticated
+      // Allow users to update their own messages for editing/deleting
+      allow update: if isAuthenticated() && (
+                    // Update status fields (read/delivered) - any authenticated user
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'readAt', 'deliveredAt']) ||
+                    // Update other fields - only message creator
+                    (resource.data.uid == request.auth.uid &&
+                     !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'readAt', 'deliveredAt']))
+                   );
+      
       allow delete: if isAuthenticated()
                     && resource.data.uid == request.auth.uid;
     }

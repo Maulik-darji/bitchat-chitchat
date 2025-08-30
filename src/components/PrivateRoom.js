@@ -180,6 +180,20 @@ const PrivateRoom = (props) => {
           console.error('Error clearing room message notifications:', error);
         }
       }
+      
+      // Mark new messages as read when they are loaded
+      const unreadMessages = messageList.filter(msg => 
+        !isMessageFromCurrentUser(msg) && 
+        msg.username !== username && 
+        msg.status !== 'read' &&
+        !msg.isOptimistic
+      );
+      
+      if (unreadMessages.length > 0) {
+        const messageIds = unreadMessages.map(msg => msg.id);
+        // Mark messages as read optimistically for instant feedback
+        firebaseService.markRoomMessagesAsReadOptimistically(room.roomId, username, messageIds);
+      }
     });
     const unsubscribeUsers = firebaseService.onRoomUsersUpdate(room.roomId, (userList) => {
       setRoomUsers(userList);
@@ -264,6 +278,45 @@ const PrivateRoom = (props) => {
     }
   }, [handleScroll]);
 
+  // Mark messages as read when they become visible
+  useEffect(() => {
+    const markVisibleMessagesAsRead = () => {
+      if (!messagesContainerRef.current) return;
+      
+      const container = messagesContainerRef.current;
+      const containerRect = container.getBoundingClientRect();
+      
+      // Get all message elements
+      const messageElements = container.querySelectorAll('[data-message-id]');
+      const visibleMessageIds = [];
+      
+      messageElements.forEach((element) => {
+        const elementRect = element.getBoundingClientRect();
+        const messageId = element.getAttribute('data-message-id');
+        
+        // Check if message is visible in the container
+        if (elementRect.top < containerRect.bottom && elementRect.bottom > containerRect.top) {
+          const message = messages.find(msg => msg.id === messageId);
+          if (message && !isMessageFromCurrentUser(message) && message.status !== 'read') {
+            visibleMessageIds.push(messageId);
+          }
+        }
+      });
+      
+      // Mark visible messages as read
+      if (visibleMessageIds.length > 0) {
+        firebaseService.markRoomMessagesAsReadOptimistically(room.roomId, username, visibleMessageIds);
+      }
+    };
+
+    // Mark messages as read when scrolling
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', markVisibleMessagesAsRead);
+      return () => container.removeEventListener('scroll', markVisibleMessagesAsRead);
+    }
+  }, [messages, room.roomId, username]);
+
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
@@ -342,6 +395,7 @@ const PrivateRoom = (props) => {
       username,
       message: messageText,
       timestamp: new Date(),
+      status: 'sent',
       isOptimistic: true
     };
 
@@ -397,6 +451,7 @@ const PrivateRoom = (props) => {
       username,
       message: messageToSend,
       timestamp: new Date(),
+      status: 'sent',
       isOptimistic: true
     };
 
@@ -480,6 +535,11 @@ const PrivateRoom = (props) => {
   };
 
   const isCurrentUser = (messageUsername) => messageUsername === username;
+
+  // Helper function to check if message is from current user
+  const isMessageFromCurrentUser = (message) => {
+    return message.username === username;
+  };
 
   const handleCopyText = async (text, messageId) => {
     try {
@@ -644,7 +704,7 @@ const PrivateRoom = (props) => {
            <h3 className="text-sm font-medium text-gray-400/70 mb-4 uppercase tracking-wide border-b border-gray-700/30 pb-2">Members</h3>
            <div className="space-y-2">
              {roomUsers.map((user) => (
-               <div key={user.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-700/30 transition-all duration-200 group">
+                               <div key={user.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-700/30 transition-all duration-200 group" style={{ backgroundColor: '#303030' }}>
                                    <div className="flex items-center space-x-3 flex-1 min-w-0">
                     <div className="w-8 h-8 bg-gray-600/30 rounded-full flex items-center justify-center flex-shrink-0">
                       <span className="text-white/90 font-bold text-sm">
@@ -679,7 +739,7 @@ const PrivateRoom = (props) => {
                                        {/* Chat Area */}
         <div className="flex-1 flex flex-col min-h-0">
           {/* Header with hamburger menu - Only visible on mobile */}
-          <div className="lg:hidden bg-gray-800/60 backdrop-blur-sm border-b border-gray-700/50 p-3 flex items-center justify-between">
+          <div className="lg:hidden backdrop-blur-sm border-b border-gray-700/50 p-3 flex items-center justify-between" style={{ backgroundColor: '#212121' }}>
             <div className="flex items-center space-x-3 min-w-0">
               <button
                 onClick={() => setIsMembersOpen(true)}
@@ -707,15 +767,15 @@ const PrivateRoom = (props) => {
                   </svg>
                 </button>
               )}
-              <button
-                onClick={handleLeaveClick}
-                className="text-red-400/80 hover:text-red-300 p-2 rounded-lg hover:bg-red-900/20"
-                title="Leave room"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-              </button>
+                             <button
+                 onClick={handleLeaveClick}
+                 className="text-red-400/80 hover:text-red-300 p-2 rounded-lg hover:bg-red-900/20"
+                 title="Leave room"
+               >
+                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                 </svg>
+               </button>
             </div>
           </div>
 
@@ -772,7 +832,7 @@ const PrivateRoom = (props) => {
               
               <div className="space-y-4">
                 {messages.map((message) => (
-                <div key={message.id} className={`flex ${isCurrentUser(message.username) ? 'justify-end' : 'justify-start'}`}>
+                <div key={message.id} data-message-id={message.id} className={`flex ${isCurrentUser(message.username) ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-xs lg:max-w-md ${isCurrentUser(message.username) ? 'text-right' : 'text-left'}`}>
                     {/* Message bubble */}
                     <div className={`relative group ${isCurrentUser(message.username) ? 'ml-auto' : 'mr-auto'}`}>
@@ -927,8 +987,8 @@ const PrivateRoom = (props) => {
       {isMembersOpen && (
         <div className="lg:hidden fixed inset-0 z-40">
           <div className="absolute inset-0 bg-black/60" onClick={() => setIsMembersOpen(false)} />
-          <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-gray-800/95 backdrop-blur-sm border-r border-gray-700/50 flex flex-col">
-            <div className="p-4 border-b border-gray-700/50 flex items-center justify-between">
+                     <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] backdrop-blur-sm border-r border-gray-700/50 flex flex-col" style={{ backgroundColor: '#303030' }}>
+                         <div className="p-4 flex items-center justify-between" style={{ backgroundColor: '#181818' }}>
               <div>
                 <h3 className="text-white/90 font-semibold">Members</h3>
                 <p className="text-gray-400/70 text-xs">{roomUsers.length} total</p>
@@ -943,10 +1003,10 @@ const PrivateRoom = (props) => {
                 </svg>
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-3 min-h-0">
+                                                   <div className="flex-1 overflow-y-auto p-3 min-h-0" style={{ backgroundColor: '#181818' }}>
               <div className="space-y-3">
                 {roomUsers.map((user) => (
-                  <div key={user.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-700/30 transition-all duration-200 group">
+                  <div key={user.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-700/30 transition-all duration-200 group" style={{ backgroundColor: '#303030' }}>
                     <div className="flex items-center justify-start flex-1 min-w-0">
                       <div className="flex-1 min-w-0 text-left">
                         <p className="text-white/90 font-medium text-sm truncate">{user.username}</p>

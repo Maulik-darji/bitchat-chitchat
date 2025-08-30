@@ -834,8 +834,6 @@ const AppContent = () => {
                     <h1 className="text-2xl font-bold text-white">Private Room: {currentRoom.name}</h1>
                   </div>
                   <div className="flex items-center space-x-3">
-                    {/* Notification Bell */}
-                    <NotificationBell username={username} />
                     <button
                       onClick={() => setCurrentView('home')}
                       className="text-gray-400 hover:text-white transition-colors"

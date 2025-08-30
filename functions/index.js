@@ -683,3 +683,97 @@ exports.cleanupOrphanedData = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('internal', 'Orphaned data cleanup failed', error);
   }
 });
+
+/**
+ * MARK ROOM MESSAGE AS READ
+ * 
+ * This function allows authenticated users to mark room messages as read
+ * without needing complex Firestore security rules.
+ */
+exports.markRoomMessageAsRead = functions.https.onCall(async (data, context) => {
+  try {
+    // Check if user is authenticated
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
+
+    const { messageId, roomId } = data;
+    const uid = context.auth.uid;
+
+    if (!messageId || !roomId) {
+      throw new functions.https.HttpsError('invalid-argument', 'messageId and roomId are required');
+    }
+
+    const db = admin.firestore();
+
+    // Check if user is a member of the room
+    const roomUserRef = db.collection('roomUsers').doc(`${roomId}_${uid}`);
+    const roomUserDoc = await roomUserRef.get();
+
+    if (!roomUserDoc.exists) {
+      throw new functions.https.HttpsError('permission-denied', 'User is not a member of this room');
+    }
+
+    // Update the message status
+    const messageRef = db.collection('roomMessages').doc(messageId);
+    await messageRef.update({
+      status: 'read',
+      readAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    console.log(`[MARK READ] ✅ Message ${messageId} marked as read by user ${uid} in room ${roomId}`);
+
+    return { success: true, messageId, roomId };
+
+  } catch (error) {
+    console.error(`[MARK READ] ❌ Error:`, error);
+    throw new functions.https.HttpsError('internal', 'Failed to mark message as read', error);
+  }
+});
+
+/**
+ * MARK ROOM MESSAGE AS DELIVERED
+ * 
+ * This function allows authenticated users to mark room messages as delivered
+ * without needing complex Firestore security rules.
+ */
+exports.markRoomMessageAsDelivered = functions.https.onCall(async (data, context) => {
+  try {
+    // Check if user is authenticated
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
+
+    const { messageId, roomId } = data;
+    const uid = context.auth.uid;
+
+    if (!messageId || !roomId) {
+      throw new functions.https.HttpsError('invalid-argument', 'messageId and roomId are required');
+    }
+
+    const db = admin.firestore();
+
+    // Check if user is a member of the room
+    const roomUserRef = db.collection('roomUsers').doc(`${roomId}_${uid}`);
+    const roomUserDoc = await roomUserRef.get();
+
+    if (!roomUserDoc.exists) {
+      throw new functions.https.HttpsError('permission-denied', 'User is not a member of this room');
+    }
+
+    // Update the message status
+    const messageRef = db.collection('roomMessages').doc(messageId);
+    await messageRef.update({
+      status: 'delivered',
+      deliveredAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    console.log(`[MARK DELIVERED] ✅ Message ${messageId} marked as delivered by user ${uid} in room ${roomId}`);
+
+    return { success: true, messageId, roomId };
+
+  } catch (error) {
+    console.error(`[MARK DELIVERED] ❌ Error:`, error);
+    throw new functions.https.HttpsError('internal', 'Failed to mark message as delivered', error);
+  }
+});

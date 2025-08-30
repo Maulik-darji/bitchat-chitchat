@@ -311,7 +311,7 @@ export const createMessageReceivedNotification = async (chatIdOrRoomId, senderUs
     
     const isRoom = messageType === 'room';
     const actionUrl = isRoom ? `/room/${chatIdOrRoomId}` : `/private-chat/${chatIdOrRoomId}`;
-    const message = isRoom ? `New message in room from ${senderUsername}` : `New message from ${senderUsername}`;
+    const message = isRoom ? 'New message in room from' : 'New message from';
     
     const notificationData = {
       type: NOTIFICATION_TYPES.MESSAGE_RECEIVED,

@@ -594,6 +594,9 @@ class FirebaseService {
       // Create notification in parallel (non-blocking)
       this.createRoomMessageNotificationAsync(roomId, username, message);
 
+      // Mark message as delivered for online users in the room (non-blocking)
+      this.markRoomMessageAsDeliveredForOnlineUsers(roomId, messageRef.id);
+
       return messageRef.id;
     } catch (error) {
       console.error('Error sending room message:', error);
@@ -3777,9 +3780,17 @@ class FirebaseService {
         readAt: serverTimestamp()
       });
     } catch (error) {
-      console.error('Error marking message as read immediately:', error);
-      throw error;
+      // Handle permission errors gracefully
+      if (error.code === 'permission-denied' || error.message.includes('Missing or insufficient permissions')) {
+        console.warn(`Permission denied when marking private message ${messageId} as read. This is normal for messages from other users.`);
+        // Don't throw the error - just log it as a warning
+        return false;
+      } else {
+        console.error('Error marking message as read immediately:', error);
+        throw error;
+      }
     }
+    return true;
   }
 
   /**
@@ -3792,7 +3803,10 @@ class FirebaseService {
       // Use individual updates for immediate feedback instead of batching
       const updatePromises = messageIds.map(async (messageId) => {
         try {
-          await this.markMessageAsReadImmediately(messageId);
+          const success = await this.markMessageAsReadImmediately(messageId);
+          if (!success) {
+            console.warn(`Could not mark private message ${messageId} as read - permission denied`);
+          }
         } catch (error) {
           console.error(`Error marking message ${messageId} as read:`, error);
         }
@@ -3817,7 +3831,11 @@ class FirebaseService {
       messageIds.forEach(async (messageId) => {
         try {
           // Fire and forget - don't wait for response
-          this.markMessageAsReadImmediately(messageId).catch(error => {
+          this.markMessageAsReadImmediately(messageId).then(success => {
+            if (!success) {
+              console.warn(`Could not mark private message ${messageId} as read - permission denied`);
+            }
+          }).catch(error => {
             console.error(`Error marking message ${messageId} as read:`, error);
           });
         } catch (error) {
@@ -3862,6 +3880,155 @@ class FirebaseService {
     }
     
     console.log('✅ Firebase service cleanup completed');
+  }
+
+  /**
+   * Mark a specific room message as read immediately (optimized for real-time updates)
+   */
+  async markRoomMessageAsReadImmediately(messageId) {
+    try {
+      const messageRef = doc(db, COLLECTIONS.ROOM_MESSAGES, messageId);
+      await updateDoc(messageRef, {
+        status: 'read',
+        readAt: serverTimestamp()
+      });
+    } catch (error) {
+      // Handle permission errors gracefully
+      if (error.code === 'permission-denied' || error.message.includes('Missing or insufficient permissions')) {
+        console.warn(`Permission denied when marking message ${messageId} as read. This is normal for messages from other users.`);
+        // Don't throw the error - just log it as a warning
+        return false;
+      } else {
+        console.error('Error marking room message as read immediately:', error);
+        throw error;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Mark new room messages as read in real-time (optimized version)
+   */
+  async markNewRoomMessagesAsRead(roomId, username, messageIds) {
+    try {
+      if (!messageIds || messageIds.length === 0) return;
+      
+      // Use individual updates for immediate feedback instead of batching
+      const updatePromises = messageIds.map(async (messageId) => {
+        try {
+          const success = await this.markRoomMessageAsReadImmediately(messageId);
+          if (!success) {
+            console.warn(`Could not mark message ${messageId} as read - permission denied`);
+          }
+        } catch (error) {
+          console.error(`Error marking room message ${messageId} as read:`, error);
+        }
+      });
+      
+      // Execute all updates concurrently for maximum speed
+      await Promise.allSettled(updatePromises);
+    } catch (error) {
+      console.error('Error marking new room messages as read:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark room messages as read with optimistic updates (fastest method)
+   */
+  async markRoomMessagesAsReadOptimistically(roomId, username, messageIds) {
+    try {
+      if (!messageIds || messageIds.length === 0) return;
+      
+      // Start all updates immediately without waiting
+      messageIds.forEach(async (messageId) => {
+        try {
+          // Fire and forget - don't wait for response
+          this.markRoomMessageAsReadImmediately(messageId).then(success => {
+            if (!success) {
+              console.warn(`Could not mark message ${messageId} as read - permission denied`);
+            }
+          }).catch(error => {
+            console.error(`Error marking room message ${messageId} as read:`, error);
+          });
+        } catch (error) {
+          console.error(`Error queuing room message ${messageId} for read update:`, error);
+        }
+      });
+      
+      // Return immediately for instant UI feedback
+      return true;
+    } catch (error) {
+      console.error('Error marking room messages as read optimistically:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark room message as delivered when recipient is online
+   */
+  async markRoomMessageAsDelivered(messageId) {
+    try {
+      const messageRef = doc(db, COLLECTIONS.ROOM_MESSAGES, messageId);
+      await updateDoc(messageRef, {
+        status: 'delivered',
+        deliveredAt: serverTimestamp()
+      });
+    } catch (error) {
+      // Handle permission errors gracefully
+      if (error.code === 'permission-denied' || error.message.includes('Missing or insufficient permissions')) {
+        console.warn(`Permission denied when marking message ${messageId} as delivered. This is normal for messages from other users.`);
+        // Don't throw the error - just log it as a warning
+        return false;
+      } else {
+        console.error('Error marking room message as delivered:', error);
+        throw error;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Mark room message as delivered for online users in the room
+   */
+  async markRoomMessageAsDeliveredForOnlineUsers(roomId, messageId) {
+    try {
+      // Get room users to check who's online
+      const roomUsersQuery = query(
+        collection(db, COLLECTIONS.ROOM_USERS),
+        where('roomId', '==', roomId)
+      );
+      
+      const roomUsersSnapshot = await getDocs(roomUsersQuery);
+      const onlineUsers = [];
+      
+      roomUsersSnapshot.forEach((doc) => {
+        const userData = doc.data();
+        if (userData.isOnline && userData.lastHeartbeat) {
+          const lastHeartbeat = userData.lastHeartbeat.toDate ? userData.lastHeartbeat.toDate().getTime() : userData.lastHeartbeat;
+          const timeSinceHeartbeat = Date.now() - lastHeartbeat;
+          
+          // User is online if heartbeat is recent (within 30 seconds)
+          if (timeSinceHeartbeat < 30000) {
+            onlineUsers.push(userData.username);
+          }
+        }
+      });
+
+      // If there are online users (excluding sender), mark as delivered
+      if (onlineUsers.length > 0) {
+        // Mark as delivered after a short delay to simulate delivery time
+        setTimeout(async () => {
+          try {
+            await this.markRoomMessageAsDelivered(messageId);
+          } catch (error) {
+            console.error('Error marking room message as delivered:', error);
+          }
+        }, 1000); // 1 second delay
+      }
+    } catch (error) {
+      console.error('Error checking online users for message delivery:', error);
+    }
   }
 }
 

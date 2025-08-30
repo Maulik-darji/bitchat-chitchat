@@ -571,16 +571,16 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
                       </div>
                     </div>
                   ) : (
-                  <div className={`max-w-xs lg:max-w-md ${isCurrentUser(message.username) ? 'text-right' : 'text-left'}`}>
+                                                                           <div className={`max-w-[240px] sm:max-w-sm md:max-w-lg lg:max-w-2xl ${isCurrentUser(message.username) ? 'text-right' : 'text-left'}`}>
                     {/* Message bubble */}
-                    <div className={`relative group ${isCurrentUser(message.username) ? 'ml-auto' : 'mr-auto'}`}>
-                      <div className={`
-                        ${isCurrentUser(message.username) 
-                          ? 'bg-purple-600/20 border-purple-500/30 text-white/90' 
-                          : 'bg-gray-700/20 border-gray-600/30 text-white/90'
-                        } 
-                        backdrop-blur-sm rounded-2xl px-2.5 py-1.5 border break-words inline-block
-                      `}>
+                                         <div className={`relative group ${isCurrentUser(message.username) ? 'ml-auto' : 'mr-auto'}`}>
+                                             <div className={`
+                         ${isCurrentUser(message.username) 
+                           ? 'bg-purple-600/20 border-purple-500/30 text-white/90' 
+                           : 'bg-gray-700/20 border-gray-600/30 text-white/90'
+                         } 
+                         backdrop-blur-sm rounded-2xl px-2.5 py-1.5 border break-words
+                       `}>
                                                  {/* Reply indicator */}
                          {replyingTo && replyingTo.id === message.id && (
                            <div className="mb-2 p-2 bg-gray-700/30 rounded-lg border-l-4 border-purple-500">
@@ -597,26 +597,26 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }
                           </div>
                         )}
                         
-                                                 <div className="flex items-center justify-between">
-                           <p className="text-sm leading-relaxed flex-1">
-                             {message.message}
-                           </p>
-                           
-                           {/* Message status and timestamp */}
-                           <div className={`flex items-center space-x-2 ml-2 ${isCurrentUser(message.username) ? 'text-purple-200/70' : 'text-gray-400/70'}`}>
-                             <span className="text-xs">
-                               {formatTime(message.timestamp)}
-                             </span>
-                             <MessageStatus 
-                               status={message.status || 'sent'} 
-                               timestamp={message.timestamp}
-                               isCurrentUser={isCurrentUser(message.username)}
-                             />
-                             {message.edited && (
-                               <span className="text-xs bg-gray-700/30 px-1 py-0.5 rounded text-xs">edited</span>
-                             )}
-                           </div>
-                         </div>
+                                                                                                   <div className="flex items-end justify-between w-full">
+                            <p className="text-sm leading-relaxed flex-1 break-words whitespace-pre-wrap min-w-0 mr-3">
+                              {message.message}
+                            </p>
+                            
+                            {/* Message status and timestamp */}
+                            <div className={`flex items-center space-x-2 flex-shrink-0 ${isCurrentUser(message.username) ? 'text-purple-200/70' : 'text-gray-400/70'}`}>
+                              <span className="text-xs">
+                                {formatTime(message.timestamp)}
+                              </span>
+                              <MessageStatus 
+                                status={message.status || 'sent'} 
+                                timestamp={message.timestamp}
+                                isCurrentUser={isCurrentUser(message.username)}
+                              />
+                              {message.edited && (
+                                <span className="text-xs bg-gray-700/30 px-1 py-0.5 rounded text-xs">edited</span>
+                              )}
+                            </div>
+                          </div>
                       </div>
                       
                       {/* Message Actions - CSS hover based */}

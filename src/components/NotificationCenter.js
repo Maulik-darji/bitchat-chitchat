@@ -347,29 +347,25 @@ const NotificationCenter = ({ username, isVisible, onClose }) => {
                       {getNotificationIcon(notification.type)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-white">
-                          {notification.message}
-                        </p>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-xs text-gray-400">
-                            {formatTime(notification.createdAt)}
-                          </span>
-                          {notification.status === 'unread' && (
-                            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                          )}
-                          {/* Click indicator */}
-                          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </div>
+                                             <div className="flex items-center justify-between w-full">
+                         <p className="text-sm font-medium text-white text-left mr-3">
+                           {notification.message} <span className="text-gray-400">{notification.senderUsername}</span>
+                         </p>
+                         <div className="flex items-center space-x-2 flex-shrink-0">
+                           <span className="text-xs text-gray-400">
+                             {formatTime(notification.createdAt)}
+                           </span>
+                           {notification.status === 'unread' && (
+                             <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                           )}
+                           {/* Click indicator */}
+                           <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                           </svg>
+                         </div>
+                       </div>
                       
-                      {notification.messagePreview && (
-                        <p className="text-sm text-gray-300 mt-1">
-                          {notification.messagePreview}
-                        </p>
-                      )}
+
                       
                       <div className="flex items-center space-x-2 mt-3">
                         {notification.status === 'unread' && (
