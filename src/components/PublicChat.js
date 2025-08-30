@@ -553,11 +553,11 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
       </div>
 
       {/* Twitter-style Message Input - Sticky position */}
-      <div 
-        className="backdrop-blur-sm border-t p-4 lg:p-6 flex-shrink-0 sticky bottom-0 z-50"
-        style={{ backgroundColor: '#303030' }}
-        onClick={() => { inputRef.current?.focus(); }}
-      >
+             <div 
+         className="backdrop-blur-sm p-4 lg:p-6 flex-shrink-0 sticky bottom-0 z-50"
+         style={{ backgroundColor: '#303030' }}
+         onClick={() => { inputRef.current?.focus(); }}
+       >
         {/* Spam Error Display - Only show when there's an actual error */}
         {spamError && (
           <div className="px-4 py-2 bg-red-900/30 border border-red-700/50 mb-4">
