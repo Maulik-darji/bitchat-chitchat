@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Circular PNG Favicon</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .preview {
+            margin: 20px 0;
+            text-align: center;
+        }
+        canvas {
+            border: 2px solid #ddd;
+            margin: 10px;
+            border-radius: 10px;
+        }
+        .download-section {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Create Circular PNG Favicon</h1>
+        <p>This tool will create a truly circular PNG favicon with transparent corners that browsers will display as circular.</p>
+        
+        <div class="info">
+            <h3>Why this works:</h3>
+            <ul>
+                <li>Creates a PNG with transparent background outside the circle</li>
+                <li>Browsers show only the visible (non-transparent) parts</li>
+                <li>Results in a truly circular favicon appearance</li>
+                <li>Better browser compatibility than SVG favicons</li>
+            </ul>
+        </div>
+
+        <div style="text-align: center;">
+            <button onclick="createCircularFavicon()">Create Circular Favicon</button>
+        </div>
+
+        <div class="preview">
+            <h3>Preview</h3>
+            <div id="previewContainer"></div>
+        </div>
+
+        <div class="download-section">
+            <h3>Download</h3>
+            <button onclick="downloadPNG()">Download Circular PNG Favicon</button>
+        </div>
+    </div>
+
+    <script>
+        let circularCanvas = null;
+
+        function createCircularFavicon() {
+            const size = 64;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Clear canvas with transparency
+            ctx.clearRect(0, 0, size, size);
+
+            // Create circular clipping path
+            ctx.beginPath();
+            ctx.arc(size/2, size/2, size/2 - 2, 0, 2 * Math.PI);
+            ctx.closePath();
+            ctx.clip();
+
+            // Fill with blue background
+            ctx.fillStyle = '#007bff';
+            ctx.fillRect(0, 0, size, size);
+
+            // Add a subtle border
+            ctx.strokeStyle = '#0056b3';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw chat bubble icon
+            ctx.fillStyle = 'white';
+            
+            // Chat bubble body
+            ctx.fillRect(20, 24, 24, 16);
+            
+            // Chat bubble tail
+            ctx.beginPath();
+            ctx.moveTo(32, 40);
+            ctx.lineTo(24, 44);
+            ctx.lineTo(24, 40);
+            ctx.closePath();
+            ctx.fill();
+
+            // Message lines
+            ctx.fillStyle = '#007bff';
+            ctx.fillRect(26, 28, 12, 2);
+            ctx.fillRect(26, 32, 8, 2);
+            ctx.fillRect(26, 36, 10, 2);
+
+            // Store canvas for download
+            circularCanvas = canvas;
+
+            // Show preview
+            const previewContainer = document.getElementById('previewContainer');
+            previewContainer.innerHTML = `
+                <h4>Circular Favicon Preview (64x64)</h4>
+                <canvas id="previewCanvas" width="128" height="128"></canvas>
+                <p><small>This preview shows the circular favicon. The actual file will have transparent corners.</small></p>
+            `;
+
+            // Draw larger preview
+            const previewCtx = document.getElementById('previewCanvas').getContext('2d');
+            previewCtx.imageSmoothingEnabled = true;
+            previewCtx.drawImage(canvas, 0, 0, 128, 128);
+        }
+
+        function downloadPNG() {
+            if (!circularCanvas) {
+                alert('Please create the circular favicon first!');
+                return;
+            }
+            
+            const link = document.createElement('a');
+            link.download = 'favicon-circular-64.png';
+            link.href = circularCanvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // Auto-create favicon when page loads
+        window.onload = function() {
+            createCircularFavicon();
+        };
+    </script>
+</body>
+</html>

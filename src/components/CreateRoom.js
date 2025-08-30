@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import firebaseService from '../lib/firebase';
 
 const CreateRoom = ({ username, onCreateRoom, onClose }) => {
@@ -24,6 +24,46 @@ const CreateRoom = ({ username, onCreateRoom, onClose }) => {
       setIsCreating(false);
     }
   };
+
+  // Track user activity when interacting with create room form
+  useEffect(() => {
+    if (!username) return;
+
+    let activityTimeout;
+    
+    const updateActivity = async () => {
+      try {
+        await firebaseService.updateUserActivity(username);
+      } catch (error) {
+        console.error('Error updating user activity:', error);
+      }
+    };
+
+    const handleUserActivity = () => {
+      // Clear existing timeout
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      
+      // Set new timeout to update activity after 2 seconds of inactivity
+      activityTimeout = setTimeout(updateActivity, 2000);
+    };
+
+    // Track various user interactions
+    const events = ['mousedown', 'mousemove', 'keydown', 'click'];
+    events.forEach(event => {
+      document.addEventListener(event, handleUserActivity, { passive: true });
+    });
+
+    return () => {
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      events.forEach(event => {
+        document.removeEventListener(event, handleUserActivity);
+      });
+    };
+  }, [username]);
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50" onClick={onClose}>

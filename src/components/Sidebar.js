@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import InviteModal from './InviteModal';
 import InvitesSection from './InvitesSection';
 import PrivateChatsList from './PrivateChatsList';
 import MyPrivateRooms from './MyPrivateRooms';
 import JoinedRooms from './JoinedRooms';
+import firebaseService from '../lib/firebase';
 
 const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, onEditUsername, onInviteAccepted, onRoomSelect, sidebarWidth = 256 }) => {
   const [showEditModal, setShowEditModal] = useState(false);
@@ -98,6 +99,46 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
   const handleInviteClick = () => {
     setShowInviteModal(true);
   };
+
+  // Track user activity when interacting with sidebar
+  useEffect(() => {
+    if (!username) return;
+
+    let activityTimeout;
+    
+    const updateActivity = async () => {
+      try {
+        await firebaseService.updateUserActivity(username);
+      } catch (error) {
+        console.error('Error updating user activity:', error);
+      }
+    };
+
+    const handleUserActivity = () => {
+      // Clear existing timeout
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      
+      // Set new timeout to update activity after 2 seconds of inactivity
+      activityTimeout = setTimeout(updateActivity, 2000);
+    };
+
+    // Track various user interactions
+    const events = ['mousedown', 'mousemove', 'keydown', 'click'];
+    events.forEach(event => {
+      document.addEventListener(event, handleUserActivity, { passive: true });
+    });
+
+    return () => {
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      events.forEach(event => {
+        document.removeEventListener(event, handleUserActivity);
+      });
+    };
+  }, [username]);
 
   const handleInviteSent = (targetUsername) => {
     // You can add a success notification here if needed

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { filterMessage, getDetectedVulgarWords, getFilterMessage } from '../lib/contentFilter';
 import { filterMessageAI, isMessageCleanAI } from '../lib/contentFilter';
+import firebaseService from '../lib/firebase';
 
 const ContentModeration = ({ 
   message, 
@@ -9,7 +10,8 @@ const ContentModeration = ({
   isVisible = false, 
   onClose,
   showWarning = true,
-  useAI = true // New prop to enable/disable AI moderation
+  useAI = true, // New prop to enable/disable AI moderation
+  username // Add username prop
 }) => {
   const [filteredMessage, setFilteredMessage] = useState('');
   const [isClean, setIsClean] = useState(true);
@@ -96,6 +98,46 @@ const ContentModeration = ({
       setIsLoading(false);
     }
   }, [message, useAI]);
+
+  // Track user activity when interacting with content moderation
+  useEffect(() => {
+    if (!username) return;
+
+    let activityTimeout;
+    
+    const updateActivity = async () => {
+      try {
+        await firebaseService.updateUserActivity(username);
+      } catch (error) {
+        console.error('Error updating user activity:', error);
+      }
+    };
+
+    const handleUserActivity = () => {
+      // Clear existing timeout
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      
+      // Set new timeout to update activity after 2 seconds of inactivity
+      activityTimeout = setTimeout(updateActivity, 2000);
+    };
+
+    // Track various user interactions
+    const events = ['mousedown', 'mousemove', 'keydown', 'click'];
+    events.forEach(event => {
+      document.addEventListener(event, handleUserActivity, { passive: true });
+    });
+
+    return () => {
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      events.forEach(event => {
+        document.removeEventListener(event, handleUserActivity);
+      });
+    };
+  }, [username]);
 
   const handleSendFiltered = () => {
     // Send the FILTERED message (with asterisks), not the original

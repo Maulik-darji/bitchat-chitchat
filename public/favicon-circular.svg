@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Transparent background -->
+  <rect width="64" height="64" fill="transparent"/>
+  
+  <!-- Circular background with shadow -->
+  <circle cx="32" cy="32" r="30" fill="#007bff" stroke="#0056b3" stroke-width="2"/>
+  
+  <!-- Chat bubble icon -->
+  <path d="M20 24c0-2.2 1.8-4 4-4h16c2.2 0 4 1.8 4 4v12c0 2.2-1.8 4-4 4H24c-2.2 0-4-1.8-4-4V24z" fill="white"/>
+  
+  <!-- Chat bubble tail -->
+  <path d="M32 40l-8 4v-4h8z" fill="white"/>
+  
+  <!-- Message lines -->
+  <rect x="26" y="28" width="12" height="2" rx="1" fill="#007bff"/>
+  <rect x="26" y="32" width="8" height="2" rx="1" fill="#007bff"/>
+  <rect x="26" y="36" width="10" height="2" rx="1" fill="#007bff"/>
+</svg>

@@ -9,6 +9,7 @@ import {
   getUnreadNotificationCount,
   NOTIFICATION_TYPES
 } from '../lib/notifications';
+import firebaseService from '../lib/firebase';
 
 const NotificationCenter = ({ username, isVisible, onClose }) => {
   const [notifications, setNotifications] = useState([]);
@@ -70,6 +71,46 @@ const NotificationCenter = ({ username, isVisible, onClose }) => {
       document.body.style.overflow = 'unset';
     };
   }, [isVisible, onClose]);
+
+  // Track user activity when interacting with notification center
+  useEffect(() => {
+    if (!username) return;
+
+    let activityTimeout;
+    
+    const updateActivity = async () => {
+      try {
+        await firebaseService.updateUserActivity(username);
+      } catch (error) {
+        console.error('Error updating user activity:', error);
+      }
+    };
+
+    const handleUserActivity = () => {
+      // Clear existing timeout
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      
+      // Set new timeout to update activity after 2 seconds of inactivity
+      activityTimeout = setTimeout(updateActivity, 2000);
+    };
+
+    // Track various user interactions
+    const events = ['mousedown', 'mousemove', 'keydown', 'click'];
+    events.forEach(event => {
+      document.addEventListener(event, handleUserActivity, { passive: true });
+    });
+
+    return () => {
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      events.forEach(event => {
+        document.removeEventListener(event, handleUserActivity);
+      });
+    };
+  }, [username]);
 
   // Handle click outside modal to close
   const handleBackdropClick = (event) => {

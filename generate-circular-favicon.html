@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate Circular Favicon</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .input-section {
+            margin-bottom: 20px;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .preview {
+            margin: 20px 0;
+            text-align: center;
+        }
+        canvas {
+            border: 2px solid #ddd;
+            margin: 10px;
+            border-radius: 10px;
+        }
+        .download-section {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .size-input {
+            width: 80px;
+            padding: 5px;
+            margin: 0 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Circular Favicon Generator</h1>
+        <p>Upload your square favicon image and convert it to a circular one with custom size.</p>
+        
+        <div class="input-section">
+            <h3>Step 1: Upload Image</h3>
+            <input type="file" id="imageInput" accept="image/*">
+            <p><small>Supported formats: PNG, JPG, JPEG, GIF</small></p>
+        </div>
+
+        <div class="input-section">
+            <h3>Step 2: Set Size</h3>
+            <label>Width: <input type="number" id="widthInput" class="size-input" value="64" min="16" max="512"></label>
+            <label>Height: <input type="number" id="heightInput" class="size-input" value="64" min="16" max="512"></label>
+            <button onclick="generateCircularFavicon()">Generate Circular Favicon</button>
+        </div>
+
+        <div class="preview">
+            <h3>Preview</h3>
+            <div id="previewContainer"></div>
+        </div>
+
+        <div class="download-section">
+            <h3>Download</h3>
+            <button onclick="downloadPNG()">Download PNG</button>
+            <button onclick="downloadICO()">Download ICO</button>
+        </div>
+    </div>
+
+    <script>
+        let originalImage = null;
+        let circularCanvas = null;
+
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        originalImage = img;
+                        document.getElementById('previewContainer').innerHTML = '<p>Image loaded! Click "Generate Circular Favicon" to continue.</p>';
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function generateCircularFavicon() {
+            if (!originalImage) {
+                alert('Please upload an image first!');
+                return;
+            }
+
+            const width = parseInt(document.getElementById('widthInput').value);
+            const height = parseInt(document.getElementById('heightInput').value);
+
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+
+            // Create circular clipping path
+            ctx.beginPath();
+            ctx.arc(width/2, height/2, Math.min(width, height)/2, 0, 2 * Math.PI);
+            ctx.closePath();
+            ctx.clip();
+
+            // Draw the image centered and scaled to fit the circle
+            const scale = Math.max(width / originalImage.width, height / originalImage.height);
+            const scaledWidth = originalImage.width * scale;
+            const scaledHeight = originalImage.height * scale;
+            
+            ctx.drawImage(
+                originalImage,
+                (width - scaledWidth) / 2,
+                (height - scaledHeight) / 2,
+                scaledWidth,
+                scaledHeight
+            );
+
+            // Store canvas for download
+            circularCanvas = canvas;
+
+            // Show preview
+            const previewContainer = document.getElementById('previewContainer');
+            previewContainer.innerHTML = `
+                <h4>Original (${originalImage.width}x${originalImage.height})</h4>
+                <canvas id="originalPreview" width="100" height="100"></canvas>
+                <h4>Circular (${width}x${height})</h4>
+                <canvas id="circularPreview" width="${width}" height="${height}"></canvas>
+            `;
+
+            // Draw original preview
+            const origCtx = document.getElementById('originalPreview').getContext('2d');
+            origCtx.drawImage(originalImage, 0, 0, 100, 100);
+
+            // Draw circular preview
+            const circCtx = document.getElementById('circularPreview').getContext('2d');
+            circCtx.drawImage(canvas, 0, 0);
+        }
+
+        function downloadPNG() {
+            if (!circularCanvas) {
+                alert('Please generate a circular favicon first!');
+                return;
+            }
+            
+            const link = document.createElement('a');
+            link.download = 'circular-favicon.png';
+            link.href = circularCanvas.toDataURL();
+            link.click();
+        }
+
+        function downloadICO() {
+            if (!circularCanvas) {
+                alert('Please generate a circular favicon first!');
+                return;
+            }
+            
+            // For ICO format, we'll download as PNG since ICO requires special encoding
+            // You can use online converters to convert PNG to ICO
+            alert('ICO format requires special encoding. Downloading as PNG instead. You can use online converters to convert PNG to ICO.');
+            downloadPNG();
+        }
+
+        // Auto-sync width and height inputs
+        document.getElementById('widthInput').addEventListener('input', function() {
+            document.getElementById('heightInput').value = this.value;
+        });
+
+        document.getElementById('heightInput').addEventListener('input', function() {
+            document.getElementById('widthInput').value = this.value;
+        });
+    </script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getUnreadNotificationCount } from '../lib/notifications';
 import NotificationCenter from './NotificationCenter';
+import firebaseService from '../lib/firebase';
 
 const NotificationBell = ({ username }) => {
   const [unreadCount, setUnreadCount] = useState(0);
@@ -15,6 +16,46 @@ const NotificationBell = ({ username }) => {
 
     return () => {
       if (unsubscribe) unsubscribe();
+    };
+  }, [username]);
+
+  // Track user activity when interacting with notification bell
+  useEffect(() => {
+    if (!username) return;
+
+    let activityTimeout;
+    
+    const updateActivity = async () => {
+      try {
+        await firebaseService.updateUserActivity(username);
+      } catch (error) {
+        console.error('Error updating user activity:', error);
+      }
+    };
+
+    const handleUserActivity = () => {
+      // Clear existing timeout
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      
+      // Set new timeout to update activity after 2 seconds of inactivity
+      activityTimeout = setTimeout(updateActivity, 2000);
+    };
+
+    // Track various user interactions
+    const events = ['mousedown', 'mousemove', 'keydown', 'click'];
+    events.forEach(event => {
+      document.addEventListener(event, handleUserActivity, { passive: true });
+    });
+
+    return () => {
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      events.forEach(event => {
+        document.removeEventListener(event, handleUserActivity);
+      });
     };
   }, [username]);
 

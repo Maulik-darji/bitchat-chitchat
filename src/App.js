@@ -294,6 +294,75 @@ const AppContent = () => {
     }
   };
 
+  // Tab visibility tracking and heartbeat system
+  useEffect(() => {
+    if (!username) return;
+
+    let heartbeatInterval;
+    let isTabActive = true;
+
+    // Function to update tab status
+    const updateTabStatus = async (active) => {
+      isTabActive = active;
+      try {
+        await firebaseService.updateUserTabStatus(username, active);
+        if (active) {
+          // Send immediate heartbeat when tab becomes active
+          await firebaseService.sendHeartbeat(username);
+        }
+      } catch (error) {
+        console.error('Error updating tab status:', error);
+      }
+    };
+
+    // Function to send heartbeat
+    const sendHeartbeat = async () => {
+      if (isTabActive) {
+        try {
+          await firebaseService.sendHeartbeat(username);
+        } catch (error) {
+          console.error('Error sending heartbeat:', error);
+        }
+      }
+    };
+
+    // Tab visibility change handler
+    const handleVisibilityChange = () => {
+      const isVisible = !document.hidden;
+      updateTabStatus(isVisible);
+    };
+
+    // Page focus/blur handlers for better tracking
+    const handleFocus = () => updateTabStatus(true);
+    const handleBlur = () => updateTabStatus(false);
+
+    // Set up event listeners
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+
+    // Start heartbeat (every 15 seconds)
+    heartbeatInterval = setInterval(sendHeartbeat, 15000);
+
+    // Initial status update
+    updateTabStatus(true);
+
+    // Cleanup function
+    return () => {
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+      
+      // Set user as inactive when component unmounts
+      if (username) {
+        firebaseService.updateUserTabStatus(username, false).catch(console.error);
+      }
+    };
+  }, [username]);
+
   // Debug functions - only available in development
   const debugUsernameIssue = async (testUsername) => {
     if (process.env.NODE_ENV !== 'development') {
@@ -418,7 +487,7 @@ const AppContent = () => {
     try {
       // Create chat ID (sorted usernames to ensure consistency)
       const sortedUsers = [username, otherUsername].sort();
-      const chatId = `${sortedUsers[0]}_${sortedUsers[1]}`;
+      const chatId = firebaseService.getSafeChatId(sortedUsers[0], sortedUsers[1]);
       
       console.log('Handling invite acceptance for:', { username, otherUsername, chatId });
       
@@ -777,16 +846,90 @@ const AppContent = () => {
 
           {/* Private Chat */}
           {currentView === 'private-chat' && currentPrivateChat && (
-            <PrivateChat
-              chatId={currentPrivateChat.chatId}
-              otherUsername={currentPrivateChat.otherUsername}
-              username={username}
-              onClose={() => {
-                setCurrentView('home');
-                setCurrentPrivateChat(null);
-              }}
-              onUserRemoved={handleUserRemoved}
-            />
+            <div className="h-full flex flex-col">
+              {/* Fixed header to avoid keyboard scroll push on mobile */}
+              <div
+                className="fixed top-0 z-50 backdrop-blur-sm border-b border-gray-700/50 p-4"
+                style={{
+                  left: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${sidebarWidth}px` : '0px',
+                  right: typeof window !== 'undefined' && window.innerWidth >= 1280 ? '320px' : '0px',
+                  backgroundColor: '#212121'
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    {/* Hamburger Menu - Mobile Only */}
+                    <button
+                      onClick={() => setCurrentView('mobile-menu')}
+                      className="lg:hidden text-gray-300 hover:text-white transition-colors p-1"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                      </svg>
+                    </button>
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 lg:w-10 lg:h-10 bg-purple-600/20 border border-purple-500/30 rounded-full flex items-center justify-center">
+                        <span className="text-purple-400 font-bold text-lg">
+                          {currentPrivateChat.otherUsername.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <h1 className="text-2xl font-bold text-white/90">{currentPrivateChat.otherUsername}</h1>
+                        <p className="hidden lg:block text-purple-400/70 text-sm">Private Chat</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={async () => {
+                        if (window.confirm(`Are you sure you want to remove ${currentPrivateChat.otherUsername} from this private chat?`)) {
+                          try {
+                            await firebaseService.removeUserFromPrivateChat(currentPrivateChat.chatId, currentPrivateChat.otherUsername);
+                            if (handleUserRemoved) {
+                              handleUserRemoved(currentPrivateChat.otherUsername);
+                            }
+                          } catch (error) {
+                            console.error('Error removing user:', error);
+                            alert('Failed to remove user from chat');
+                          }
+                        }
+                      }}
+                      className="text-red-400 hover:text-red-300 transition-colors p-2 rounded-lg hover:bg-red-600/20"
+                      title="Remove user from chat"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCurrentView('home');
+                        setCurrentPrivateChat(null);
+                      }}
+                      className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-600/20"
+                      title="Exit private chat"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {/* Scroll area offset by header height */}
+              <div className="flex-1 overflow-y-auto pt-16" style={{ backgroundColor: '#212121' }}>
+                <PrivateChat
+                  chatId={currentPrivateChat.chatId}
+                  otherUsername={currentPrivateChat.otherUsername}
+                  username={username}
+                  onClose={() => {
+                    setCurrentView('home');
+                    setCurrentPrivateChat(null);
+                  }}
+                  onUserRemoved={handleUserRemoved}
+                />
+              </div>
+            </div>
           )}
         </div>
 

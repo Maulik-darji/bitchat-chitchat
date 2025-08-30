@@ -11,7 +11,21 @@ const StatsSidebar = () => {
   useEffect(() => {
     const unsubscribe = firebaseService.onUsersUpdate((users) => {
       const totalUsers = users.length;
-      const activeUsers = users.filter(user => user.isOnline).length;
+      
+      // Count only truly active users (tab active and recent heartbeat)
+      const now = Date.now();
+      const HEARTBEAT_TIMEOUT = 30000; // 30 seconds timeout
+      
+      const activeUsers = users.filter(user => {
+        if (user.isTabActive && user.lastHeartbeat) {
+          const lastHeartbeat = user.lastHeartbeat.toDate ? user.lastHeartbeat.toDate().getTime() : user.lastHeartbeat;
+          const timeSinceHeartbeat = now - lastHeartbeat;
+          
+          // User is active if tab is active and heartbeat is recent
+          return timeSinceHeartbeat < HEARTBEAT_TIMEOUT;
+        }
+        return false;
+      }).length;
       
       setStats({
         totalUsers,

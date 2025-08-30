@@ -207,6 +207,46 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
     }
   }, [handleScroll]);
 
+  // Track user activity (scrolling, clicking, etc.)
+  useEffect(() => {
+    if (!username) return;
+
+    let activityTimeout;
+    
+    const updateActivity = async () => {
+      try {
+        await firebaseService.updateUserActivity(username);
+      } catch (error) {
+        console.error('Error updating user activity:', error);
+      }
+    };
+
+    const handleUserActivity = () => {
+      // Clear existing timeout
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      
+      // Set new timeout to update activity after 2 seconds of inactivity
+      activityTimeout = setTimeout(updateActivity, 2000);
+    };
+
+    // Track various user interactions
+    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach(event => {
+      document.addEventListener(event, handleUserActivity, { passive: true });
+    });
+
+    return () => {
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      events.forEach(event => {
+        document.removeEventListener(event, handleUserActivity);
+      });
+    };
+  }, [username]);
+
   // Remove the auto-re-focus effect that was causing the persistent focus
 
   const handleSendMessage = async (e) => {
@@ -394,6 +434,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
         onClose={closeContentModeration}
         onSend={handleModeratedSend}
         showWarning={true}
+        username={username}
       />
 
       {/* Messages Container with WhatsApp-style layout - Scrollable */}

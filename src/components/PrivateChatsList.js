@@ -43,6 +43,46 @@ const PrivateChatsList = ({ username, onChatSelect }) => {
     };
   }, [username]);
 
+  // Track user activity when interacting with private chats list
+  useEffect(() => {
+    if (!username) return;
+
+    let activityTimeout;
+    
+    const updateActivity = async () => {
+      try {
+        await firebaseService.updateUserActivity(username);
+      } catch (error) {
+        console.error('Error updating user activity:', error);
+      }
+    };
+
+    const handleUserActivity = () => {
+      // Clear existing timeout
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      
+      // Set new timeout to update activity after 2 seconds of inactivity
+      activityTimeout = setTimeout(updateActivity, 2000);
+    };
+
+    // Track various user interactions
+    const events = ['mousedown', 'mousemove', 'keydown', 'click'];
+    events.forEach(event => {
+      document.addEventListener(event, handleUserActivity, { passive: true });
+    });
+
+    return () => {
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      events.forEach(event => {
+        document.removeEventListener(event, handleUserActivity);
+      });
+    };
+  }, [username]);
+
   const getOtherUsername = (chat) => {
     if (!chat.participants || !Array.isArray(chat.participants)) {
       console.warn('Invalid chat data:', chat);
@@ -152,7 +192,7 @@ const PrivateChatsList = ({ username, onChatSelect }) => {
               onMouseLeave={() => setHoveredChat(null)}
             >
               <Link
-                to={`/chat/${chat.id}`}
+                to={`/chat/${firebaseService.getSafeChatId(username, otherUsername)}`}
                 onClick={() => {
                   if (otherUsername && onChatSelect) {
                     onChatSelect(otherUsername);
@@ -177,12 +217,12 @@ const PrivateChatsList = ({ username, onChatSelect }) => {
               
               {/* Remove User Button - Only visible on hover */}
               {hoveredChat === chat.id && (
-                <button
-                  onClick={(e) => handleRemoveUser(chat.id, otherUsername, e)}
-                  disabled={removingUsers.has(otherUsername)}
-                  className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={`Remove ${otherUsername} from chat`}
-                >
+                              <button
+                onClick={(e) => handleRemoveUser(firebaseService.getSafeChatId(username, otherUsername), otherUsername, e)}
+                disabled={removingUsers.has(otherUsername)}
+                className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={`Remove ${otherUsername} from chat`}
+              >
                   {removingUsers.has(otherUsername) ? (
                     <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

@@ -282,7 +282,10 @@ class FirebaseService {
         uid: current.uid, // CRITICAL: Link to Auth UID
         createdAt: serverTimestamp(),
         isOnline: true,
-        lastSeen: serverTimestamp()
+        isTabActive: true,
+        lastSeen: serverTimestamp(),
+        lastTabActivity: serverTimestamp(),
+        lastHeartbeat: serverTimestamp()
       });
       
       // Add to online users
@@ -326,7 +329,10 @@ class FirebaseService {
         email: email,
         createdAt: serverTimestamp(),
         isOnline: true,
-        lastSeen: serverTimestamp()
+        isTabActive: true,
+        lastSeen: serverTimestamp(),
+        lastTabActivity: serverTimestamp(),
+        lastHeartbeat: serverTimestamp()
       });
       
       // Add to online users
@@ -376,27 +382,95 @@ class FirebaseService {
   /**
    * Update user status
    */
-  async updateUserStatus(username, isOnline) {
-    try {
-      const current = auth.currentUser;
-      if (!current) return;
+  async updateUserStatus(username, isOnline) {
+    try {
+      const current = auth.currentUser;
+      if (!current) return;
 
-      const userRef = doc(db, COLLECTIONS.USERS, username);
-      await updateDoc(userRef, {
-        isOnline,
-        lastSeen: serverTimestamp(),
-        uid: current.uid // Ensure UID is always present
-      });
-      
-      if (isOnline) {
-        onlineUsers.set(username, true);
-      } else {
-        onlineUsers.delete(username);
-      }
-    } catch (error) {
-      console.error('Error updating user status:', error);
-    }
-  }
+      const userRef = doc(db, COLLECTIONS.USERS, username);
+      await updateDoc(userRef, {
+        isOnline,
+        lastSeen: serverTimestamp(),
+        uid: current.uid // Ensure UID is always present
+      });
+      
+      if (isOnline) {
+        onlineUsers.set(username, true);
+      } else {
+        onlineUsers.delete(username);
+        // Also set tab as inactive when going offline
+        await updateDoc(userRef, {
+          isTabActive: false,
+          lastTabActivity: serverTimestamp()
+        });
+      }
+    } catch (error) {
+      console.error('Error updating user status:', error);
+    }
+  }
+
+  /**
+   * Update user tab visibility status
+   */
+  async updateUserTabStatus(username, isTabActive) {
+    try {
+      const current = auth.currentUser;
+      if (!current) return;
+
+      const userRef = doc(db, COLLECTIONS.USERS, username);
+      await updateDoc(userRef, {
+        isTabActive,
+        lastTabActivity: serverTimestamp(),
+        uid: current.uid
+      });
+      
+      if (isTabActive) {
+        onlineUsers.set(username, true);
+      } else {
+        // Don't immediately remove from online users, wait for heartbeat timeout
+        // This prevents flickering when switching tabs quickly
+      }
+    } catch (error) {
+      console.error('Error updating user tab status:', error);
+    }
+  }
+
+  /**
+   * Send heartbeat to keep user active
+   */
+  async sendHeartbeat(username) {
+    try {
+      const current = auth.currentUser;
+      if (!current) return;
+
+      const userRef = doc(db, COLLECTIONS.USERS, username);
+      await updateDoc(userRef, {
+        lastHeartbeat: serverTimestamp(),
+        uid: current.uid
+      });
+    } catch (error) {
+      console.error('Error sending heartbeat:', error);
+    }
+  }
+
+  /**
+   * Update user activity (called when user performs actions)
+   */
+  async updateUserActivity(username) {
+    try {
+      const current = auth.currentUser;
+      if (!current) return;
+
+      const userRef = doc(db, COLLECTIONS.USERS, username);
+      await updateDoc(userRef, {
+        lastSeen: serverTimestamp(),
+        lastHeartbeat: serverTimestamp(),
+        uid: current.uid
+      });
+    } catch (error) {
+      console.error('Error updating user activity:', error);
+    }
+  }
 
   /**
    * Send public message with UID tracking
@@ -420,6 +494,10 @@ class FirebaseService {
           message: replyTo.message
         } : null
       });
+
+      // Update user activity when sending message
+      await this.updateUserActivity(username);
+      
       return messageRef.id;
     } catch (error) {
       console.error('Error sending public message:', error);
@@ -441,6 +519,14 @@ class FirebaseService {
         editedAt: serverTimestamp(),
         edited: true
       });
+
+      // Get username from the message to update activity
+      const messageDoc = await getDoc(messageRef);
+      if (messageDoc.exists()) {
+        const messageData = messageDoc.data();
+        await this.updateUserActivity(messageData.username);
+      }
+
       return true;
     } catch (error) {
       console.error('Error editing public message:', error);
@@ -489,6 +575,9 @@ class FirebaseService {
       await batch.commit();
 
       console.log('Room message sent successfully:', messageRef.id);
+
+      // Update user activity when sending message
+      await this.updateUserActivity(username);
 
       // Create notification in parallel (non-blocking)
       this.createRoomMessageNotificationAsync(roomId, username, message);
@@ -548,6 +637,14 @@ class FirebaseService {
         editedAt: serverTimestamp(),
         edited: true
       });
+
+      // Get username from the message to update activity
+      const messageDoc = await getDoc(messageRef);
+      if (messageDoc.exists()) {
+        const messageData = messageDoc.data();
+        await this.updateUserActivity(messageData.username);
+      }
+
       return true;
     } catch (error) {
       console.error('Error editing room message:', error);
@@ -615,6 +712,9 @@ class FirebaseService {
         username,
         joinedAt: serverTimestamp()
       });
+
+      // Update user activity when creating room
+      await this.updateUserActivity(username);
       
       return roomRef.id;
     } catch (error) {
@@ -1012,6 +1112,9 @@ class FirebaseService {
         username,
         joinedAt: serverTimestamp()
       });
+
+      // Update user activity when joining room
+      await this.updateUserActivity(username);
       
       // Update room members
       const roomRef = doc(db, COLLECTIONS.ROOMS, roomCode);
@@ -1156,8 +1259,21 @@ class FirebaseService {
   onUsersUpdate(callback) {
     const unsubscribe = onSnapshot(collection(db, COLLECTIONS.USERS), (snapshot) => {
       const users = [];
+      const now = Date.now();
+      const HEARTBEAT_TIMEOUT = 30000; // 30 seconds timeout
+      
       snapshot.forEach((doc) => {
-        users.push({ id: doc.id, ...doc.data() });
+        const userData = doc.data();
+        // Only include users with recent activity
+        if (userData.lastSeen) {
+          const lastSeen = userData.lastSeen.toDate ? userData.lastSeen.toDate().getTime() : userData.lastSeen;
+          const timeSinceLastSeen = now - lastSeen;
+          
+          // Include user if they've been seen in the last 5 minutes
+          if (timeSinceLastSeen < 300000) {
+            users.push({ id: doc.id, ...userData });
+          }
+        }
       });
       callback(users);
     });
@@ -1220,6 +1336,9 @@ class FirebaseService {
         status: 'pending', // pending, accepted, rejected
         createdAt: serverTimestamp()
       });
+
+      // Update user activity when sending invite
+      await this.updateUserActivity(fromUsername);
 
       // Note: Private chat invites don't need room notifications
       // They are handled differently from room invites
@@ -1320,6 +1439,142 @@ class FirebaseService {
   }
 
   /**
+   * Get the safe chat ID for two users (for URL generation)
+   */
+  getSafeChatId(user1, user2) {
+    const sortedUsers = [user1, user2].sort();
+    const safeUser1 = sortedUsers[0].replace(/[^a-zA-Z0-9]/g, '_');
+    const safeUser2 = sortedUsers[1].replace(/[^a-zA-Z0-9]/g, '_');
+    return `${safeUser1}_${safeUser2}`;
+  }
+
+  /**
+   * Get the original chat ID from safe chat ID for database operations
+   */
+  async getOriginalChatId(safeChatId, username) {
+    try {
+      // Query for chats where the user is a participant
+      const q = query(
+        collection(db, COLLECTIONS.PRIVATE_CHATS),
+        where('participants', 'array-contains', username)
+      );
+      
+      const snapshot = await getDocs(q);
+      
+      for (const doc of snapshot.docs) {
+        const chatData = doc.data();
+        const expectedSafeId = this.getSafeChatId(chatData.participants[0], chatData.participants[1]);
+        
+        if (expectedSafeId === safeChatId) {
+          return doc.id; // Return the original database ID
+        }
+      }
+      
+      return safeChatId; // Fallback to safe ID if not found
+    } catch (error) {
+      console.error('Error getting original chat ID:', error);
+      return safeChatId; // Fallback to safe ID on error
+    }
+  }
+
+  /**
+   * Find a private chat by participants (for backward compatibility)
+   */
+  async findPrivateChatByParticipants(user1, user2) {
+    try {
+      const sortedUsers = [user1, user2].sort();
+      
+      // Try the new safe format first
+      const safeChatId = this.getSafeChatId(user1, user2);
+      const safeChatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, safeChatId);
+      const safeChatDoc = await getDoc(safeChatRef);
+      
+      if (safeChatDoc.exists()) {
+        return safeChatDoc.data();
+      }
+      
+      // Try the old format for backward compatibility
+      const oldChatId = `${sortedUsers[0]}_${sortedUsers[1]}`;
+      const oldChatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, oldChatId);
+      const oldChatDoc = await getDoc(oldChatRef);
+      
+      if (oldChatDoc.exists()) {
+        // Migrate to new format
+        const chatData = oldChatDoc.data();
+        await this.migrateChatToSafeFormat(oldChatId, safeChatId, chatData);
+        return chatData;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error finding private chat by participants:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Migrate a chat from old format to new safe format
+   */
+  async migrateChatToSafeFormat(oldChatId, newChatId, chatData) {
+    try {
+      // Create new document with safe ID
+      const newChatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, newChatId);
+      await setDoc(newChatRef, {
+        ...chatData,
+        id: newChatId
+      });
+      
+      // Delete old document
+      const oldChatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, oldChatId);
+      await deleteDoc(oldChatRef);
+      
+      console.log('Migrated chat from', oldChatId, 'to', newChatId);
+    } catch (error) {
+      console.error('Error migrating chat format:', error);
+    }
+  }
+
+  /**
+   * Migrate all existing chats to safe format (for admin use)
+   */
+  async migrateAllChatsToSafeFormat() {
+    try {
+      console.log('Starting migration of all chats to safe format...');
+      
+      const snapshot = await getDocs(collection(db, COLLECTIONS.PRIVATE_CHATS));
+      let migratedCount = 0;
+      let errorCount = 0;
+      
+      for (const doc of snapshot.docs) {
+        try {
+          const chatData = doc.data();
+          const oldChatId = doc.id;
+          
+          // Check if this is already in safe format
+          if (oldChatId.includes('@') || oldChatId.includes(' ')) {
+            // This is an old format chat, migrate it
+            const safeChatId = this.getSafeChatId(chatData.participants[0], chatData.participants[1]);
+            
+            if (safeChatId !== oldChatId) {
+              await this.migrateChatToSafeFormat(oldChatId, safeChatId, chatData);
+              migratedCount++;
+            }
+          }
+        } catch (error) {
+          console.error('Error migrating chat', doc.id, ':', error);
+          errorCount++;
+        }
+      }
+      
+      console.log(`Migration complete: ${migratedCount} chats migrated, ${errorCount} errors`);
+      return { migratedCount, errorCount };
+    } catch (error) {
+      console.error('Error during chat migration:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Create private chat between two users
    */
   async createPrivateChat(user1, user2) {
@@ -1328,8 +1583,7 @@ class FirebaseService {
       if (!current) throw new Error('No authenticated user');
 
       // Create unique chat ID (sorted usernames to ensure consistency)
-      const sortedUsers = [user1, user2].sort();
-      const chatId = `${sortedUsers[0]}_${sortedUsers[1]}`;
+      const chatId = this.getSafeChatId(user1, user2);
 
       console.log('Creating private chat:', { chatId, user1, user2 });
 
@@ -1342,6 +1596,10 @@ class FirebaseService {
         const participants = Array.isArray(chatData.participants) ? chatData.participants : [];
         let needsUpdate = false;
         const updatedParticipants = [...participants];
+        
+        // Create sorted users array for consistency
+        const sortedUsers = [user1, user2].sort();
+        
         for (const u of sortedUsers) {
           if (!updatedParticipants.includes(u)) {
             updatedParticipants.push(u);
@@ -1394,6 +1652,12 @@ class FirebaseService {
         lastMessageAt: serverTimestamp()
       });
 
+      // Update activity for both users when creating private chat
+      await Promise.all([
+        this.updateUserActivity(user1),
+        this.updateUserActivity(user2)
+      ]);
+
       console.log('Private chat created successfully:', chatId);
       return chatId;
     } catch (error) {
@@ -1410,15 +1674,18 @@ class FirebaseService {
       const current = auth.currentUser;
       if (!current) throw new Error('No authenticated user');
 
-      console.log('Sending private message:', { chatId, username, message, uid: current.uid, replyTo });
+      // Get the original chat ID for database operations
+      const originalChatId = await this.getOriginalChatId(chatId, username);
+      
+      console.log('Sending private message:', { chatId, originalChatId, username, message, uid: current.uid, replyTo });
 
       const messageRef = doc(collection(db, COLLECTIONS.PRIVATE_MESSAGES));
-      const chatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, chatId);
+      const chatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, originalChatId);
       
       // Create message data
       const messageData = {
         id: messageRef.id,
-        chatId,
+        chatId: originalChatId, // Store original ID in message
         uid: current.uid,
         username,
         message,
@@ -1442,6 +1709,9 @@ class FirebaseService {
       await batch.commit();
 
       console.log('Private message sent successfully:', messageRef.id);
+
+      // Update user activity when sending message
+      await this.updateUserActivity(username);
 
       // Get chat participants and create notification in parallel (non-blocking)
       this.createMessageNotificationAsync(chatId, username, message);
@@ -1590,7 +1860,14 @@ class FirebaseService {
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const chats = [];
         snapshot.forEach((doc) => {
-          chats.push({ id: doc.id, ...doc.data() });
+          const chatData = doc.data();
+          // Use safe chat ID for the frontend
+          const safeChatId = this.getSafeChatId(chatData.participants[0], chatData.participants[1]);
+          chats.push({ 
+            id: safeChatId, // Use safe ID for frontend
+            originalId: doc.id, // Keep original ID for database operations
+            ...chatData 
+          });
         });
         console.log('Private chats updated:', chats.length, 'chats for', username);
         callback(chats);
@@ -1621,9 +1898,12 @@ class FirebaseService {
       const current = auth.currentUser;
       if (!current) throw new Error('No authenticated user');
 
-      console.log('Removing user from private chat:', { chatId, usernameToRemove });
+      // Get the original chat ID for database operations
+      const originalChatId = await this.getOriginalChatId(chatId, current.displayName);
+      
+      console.log('Removing user from private chat:', { chatId, originalChatId, usernameToRemove });
 
-      const chatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, chatId);
+      const chatRef = doc(db, COLLECTIONS.PRIVATE_CHATS, originalChatId);
       const chatDoc = await getDoc(chatRef);
       
       if (!chatDoc.exists()) {
@@ -1707,7 +1987,7 @@ class FirebaseService {
           const removalNotificationRef = doc(collection(db, COLLECTIONS.REMOVAL_NOTIFICATIONS));
           await setDoc(removalNotificationRef, {
             id: removalNotificationRef.id,
-            chatId: chatId,
+            chatId: originalChatId,
             removedUsername: usernameToRemove,
             removedUid: userToRemoveUid,
             removedBy: current.uid,
@@ -1730,10 +2010,10 @@ class FirebaseService {
         console.log('Attempting to delete all messages before deleting chat...');
         const messagesQuery = query(
           collection(db, COLLECTIONS.PRIVATE_MESSAGES),
-          where('chatId', '==', chatId)
+          where('chatId', '==', originalChatId)
         );
         const messagesSnapshot = await getDocs(messagesQuery);
-        console.log(`Found ${messagesSnapshot.size} messages to delete in chat ${chatId}`);
+        console.log(`Found ${messagesSnapshot.size} messages to delete in chat ${originalChatId}`);
         
         if (messagesSnapshot.size > 0) {
           try {
@@ -1772,7 +2052,7 @@ class FirebaseService {
           console.log('Chat document deleted successfully');
           
           // Stop any listeners for this chat to prevent further message updates
-          this.stopChatListeners(chatId);
+          this.stopChatListeners(originalChatId);
         } catch (chatDeleteError) {
           console.error('Error deleting chat document:', chatDeleteError);
           throw new Error('Failed to delete chat document');
@@ -1787,10 +2067,10 @@ class FirebaseService {
         // Delete all messages in this chat
         const messagesQuery = query(
           collection(db, COLLECTIONS.PRIVATE_MESSAGES),
-          where('chatId', '==', chatId)
+          where('chatId', '==', originalChatId)
         );
         const messagesSnapshot = await getDocs(messagesQuery);
-        console.log(`Found ${messagesSnapshot.size} messages to delete in chat ${chatId}`);
+        console.log(`Found ${messagesSnapshot.size} messages to delete in chat ${originalChatId}`);
         
         if (messagesSnapshot.size > 0) {
           try {
@@ -2023,12 +2303,21 @@ class FirebaseService {
       const usersSnapshot = await getDocs(collection(db, COLLECTIONS.USERS));
       const totalUsers = usersSnapshot.size;
       
-      // Count online users
+      // Count only truly active users (tab active and recent heartbeat)
       let activeUsers = 0;
+      const now = Date.now();
+      const HEARTBEAT_TIMEOUT = 30000; // 30 seconds timeout
+      
       usersSnapshot.forEach((doc) => {
         const userData = doc.data();
-        if (userData.isOnline) {
-          activeUsers++;
+        if (userData.isTabActive && userData.lastHeartbeat) {
+          const lastHeartbeat = userData.lastHeartbeat.toDate ? userData.lastHeartbeat.toDate().getTime() : userData.lastHeartbeat;
+          const timeSinceHeartbeat = now - lastHeartbeat;
+          
+          // User is active if tab is active and heartbeat is recent
+          if (timeSinceHeartbeat < HEARTBEAT_TIMEOUT) {
+            activeUsers++;
+          }
         }
       });
       
@@ -2889,6 +3178,10 @@ class FirebaseService {
 
       await deleteDoc(messageRef);
       console.log('Public message deleted successfully:', messageId);
+
+      // Update user activity when deleting message
+      await this.updateUserActivity(messageData.username);
+
       return true;
     } catch (error) {
       console.error('Error deleting public message:', error);
@@ -2927,6 +3220,10 @@ class FirebaseService {
 
       await deleteDoc(messageRef);
       console.log('Room message deleted successfully:', messageId);
+
+      // Update user activity when deleting message
+      await this.updateUserActivity(messageData.username);
+
       return true;
     } catch (error) {
       console.error('Error deleting room message:', error);

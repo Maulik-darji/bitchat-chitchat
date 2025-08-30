@@ -2,6 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!-- Circular favicon - SVG format -->
+    <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/favicon-circular.svg" />
+    <!-- Circular favicon - PNG format for better browser support -->
+    <link rel="icon" type="image/png" sizes="64x64" href="%PUBLIC_URL%/favicon-circular-64.png" />
+    <!-- Fallback to original favicons -->
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico?v=2" />
     <link rel="shortcut icon" href="%PUBLIC_URL%/favicon.ico?v=2" />
     <link rel="icon" type="image/png" sizes="32x32" href="%PUBLIC_URL%/favicon-32x32.png?v=2" />
@@ -9,6 +14,15 @@
     <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/apple-touch-icon.png?v=2" />
     <link rel="icon" type="image/png" sizes="192x192" href="%PUBLIC_URL%/android-chrome-192x192.png?v=2" />
     <link rel="icon" type="image/png" sizes="512x512" href="%PUBLIC_URL%/android-chrome-512x512.png?v=2" />
+    
+    <!-- Favicon Styling for Circular Appearance -->
+    <style>
+      /* Make favicon appear circular in browsers that support it */
+      link[rel="icon"] {
+        border-radius: 50%;
+      }
+    </style>
+    
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
     

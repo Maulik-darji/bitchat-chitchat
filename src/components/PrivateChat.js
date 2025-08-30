@@ -6,7 +6,7 @@ import { isMessageClean } from '../lib/contentFilter';
 import MessageStatus from './MessageStatus';
 import { clearMessageNotifications } from '../lib/notifications';
 
-const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, hideHeader = false }) => {
+const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -225,6 +225,46 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
     };
   }, []);
 
+  // Track user activity (scrolling, clicking, etc.)
+  useEffect(() => {
+    if (!username) return;
+
+    let activityTimeout;
+    
+    const updateActivity = async () => {
+      try {
+        await firebaseService.updateUserActivity(username);
+      } catch (error) {
+        console.error('Error updating user activity:', error);
+      }
+    };
+
+    const handleUserActivity = () => {
+      // Clear existing timeout
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      
+      // Set new timeout to update activity after 2 seconds of inactivity
+      activityTimeout = setTimeout(updateActivity, 2000);
+    };
+
+    // Track various user interactions
+    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach(event => {
+      document.addEventListener(event, handleUserActivity, { passive: true });
+    });
+
+    return () => {
+      if (activityTimeout) {
+        clearTimeout(activityTimeout);
+      }
+      events.forEach(event => {
+        document.removeEventListener(event, handleUserActivity);
+      });
+    };
+  }, [username]);
+
 
 
   const handleSendMessage = async (e) => {
@@ -434,6 +474,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
         onClose={closeContentModeration}
         onSend={handleModeratedSend}
         showWarning={true}
+        username={username}
       />
       
       {/* Chat Area */}
@@ -444,56 +485,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
           className="flex-1 overflow-y-auto flex flex-col min-h-0 will-change-scroll"
           style={{ WebkitOverflowScrolling: 'touch', position: 'relative' }}
         >
-          {/* Optional internal header (hidden when parent renders a fixed header) */}
-          {!hideHeader && (
-                         <div className="sticky top-0 z-30 backdrop-blur-sm border-b border-gray-700/50 p-4 flex-shrink-0" style={{ backgroundColor: '#212121' }}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 lg:w-10 lg:h-10 bg-purple-600/20 border border-purple-500/30 rounded-full flex items-center justify-center">
-                    <span className="text-purple-400 font-bold text-lg">
-                      {otherUsername.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                  <div>
-                    <h1 className="text-2xl font-bold text-white/90">{otherUsername}</h1>
-                    <p className="hidden lg:block text-purple-400/70 text-sm">Private Chat</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={async () => {
-                      if (window.confirm(`Are you sure you want to remove ${otherUsername} from this private chat?`)) {
-                        try {
-                          await firebaseService.removeUserFromPrivateChat(chatId, otherUsername);
-                          if (onUserRemoved) {
-                            onUserRemoved(otherUsername);
-                          }
-                        } catch (error) {
-                          console.error('Error removing user:', error);
-                          alert('Failed to remove user from chat');
-                        }
-                      }
-                    }}
-                    className="text-red-400 hover:text-red-300 transition-colors p-2 rounded-lg hover:bg-red-600/20"
-                    title="Remove user from chat"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={onClose}
-                    className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-600/20"
-                    title="Exit private chat"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Header is now handled by parent App.js for consistent mobile behavior */}
 
           {/* Messages */}
           <div className="flex-1 p-2 lg:p-3 space-y-3 flex flex-col min-h-0" style={{ backgroundColor: '#212121' }}>
