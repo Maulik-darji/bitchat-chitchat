@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   getUserNotifications, 
   markNotificationAsRead, 
@@ -13,6 +13,7 @@ const NotificationCenter = ({ username, isVisible, onClose }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const modalRef = useRef(null);
 
   useEffect(() => {
     if (!username || !isVisible) return;
@@ -47,6 +48,33 @@ const NotificationCenter = ({ username, isVisible, onClose }) => {
       if (unsubscribeUnreadCount) unsubscribeUnreadCount();
     };
   }, [username, isVisible]);
+
+  // Handle escape key press to close modal
+  useEffect(() => {
+    const handleEscapeKey = (event) => {
+      if (event.key === 'Escape' && isVisible) {
+        onClose();
+      }
+    };
+
+    if (isVisible) {
+      document.addEventListener('keydown', handleEscapeKey);
+      // Prevent body scroll when modal is open
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscapeKey);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isVisible, onClose]);
+
+  // Handle click outside modal to close
+  const handleBackdropClick = (event) => {
+    if (modalRef.current && !modalRef.current.contains(event.target)) {
+      onClose();
+    }
+  };
 
   const handleMarkAsRead = async (notificationId) => {
     try {
@@ -132,8 +160,15 @@ const NotificationCenter = ({ username, isVisible, onClose }) => {
   if (!isVisible) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-end z-50 p-4"
+      onClick={handleBackdropClick}
+    >
+      <div 
+        ref={modalRef}
+        className="bg-gray-800 rounded-lg shadow-xl w-full max-w-xs mx-auto flex flex-col max-h-[70vh] sm:max-h-[60vh] lg:mt-20 lg:mr-4 lg:max-w-sm"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
           <div className="flex items-center space-x-3">
@@ -148,26 +183,45 @@ const NotificationCenter = ({ username, isVisible, onClose }) => {
             {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllAsRead}
-                className="text-blue-400 hover:text-blue-300 text-sm px-3 py-1 rounded-md hover:bg-blue-900/20 transition-colors"
+                className="text-blue-400 hover:text-blue-300 text-sm px-3 py-1 rounded-md hover:bg-blue-900/20 transition-colors hidden sm:block"
               >
                 Mark all read
               </button>
             )}
             <button
               onClick={handleDeleteAllNotifications}
-              className="text-red-400 hover:text-red-300 text-sm px-3 py-1 rounded-md hover:bg-red-900/20 transition-colors"
+              className="text-red-400 hover:text-red-300 text-sm px-3 py-1 rounded-md hover:bg-red-900/20 transition-colors hidden sm:block"
             >
               Clear all
             </button>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700/50 transition-colors"
+              className="text-gray-400 hover:text-white bg-transparent hover:bg-gray-700/50 p-2 rounded-lg transition-all duration-200"
+              title="Close notifications (ESC)"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
+        </div>
+
+        {/* Mobile action buttons */}
+        <div className="sm:hidden flex items-center justify-center space-x-2 p-3 border-b border-gray-700/50">
+          {unreadCount > 0 && (
+            <button
+              onClick={handleMarkAllAsRead}
+              className="text-blue-400 hover:text-blue-300 text-sm px-4 py-2 rounded-md hover:bg-blue-900/20 transition-colors flex-1"
+            >
+              Mark all read
+            </button>
+          )}
+          <button
+            onClick={handleDeleteAllNotifications}
+            className="text-red-400 hover:text-red-300 text-sm px-4 py-2 rounded-md hover:bg-red-900/20 transition-colors flex-1"
+          >
+            Clear all
+          </button>
         </div>
 
         {/* Notifications List */}
@@ -177,14 +231,26 @@ const NotificationCenter = ({ username, isVisible, onClose }) => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             </div>
           ) : notifications.length === 0 ? (
-            <div className="text-center py-8">
+            <div className="text-center px-6 pt-24 pb-8 flex flex-col items-center justify-center min-h-[300px]">
               <div className="w-16 h-16 bg-gray-700/50 border border-gray-600/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5zM4 19h6a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                <span className="material-symbols-outlined text-white text-2xl" style={{fontSize: '1.5rem'}}>
+                  notifications
+                </span>
+                {/* Fallback icon in case Material Symbols doesn't load */}
+                <svg className="w-8 h-8 text-white absolute" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{display: 'none'}}>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5zM4 19h6a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2zM9 17v1a3 3 0 003 3 3 3 0 003-3v-1" />
                 </svg>
               </div>
-              <p className="text-gray-400 text-lg font-medium">No notifications yet</p>
-              <p className="text-gray-500 text-sm">You're all caught up!</p>
+              <p className="text-gray-300 text-lg font-semibold mb-2">No notifications yet</p>
+              <p className="text-gray-400 text-sm mb-6">You're all caught up!</p>
+              
+              {/* Close button for empty state */}
+              <button
+                onClick={onClose}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-all duration-200 font-medium"
+              >
+                Close
+              </button>
             </div>
           ) : (
             <div className="space-y-3">

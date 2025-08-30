@@ -56,6 +56,14 @@ const InvitesSection = ({ username, onInviteAccepted }) => {
     }
   };
 
+  const handleCancelInvite = async (inviteId) => {
+    try {
+      await firebaseService.cancelPrivateChatInvite(inviteId);
+    } catch (error) {
+      console.error('Error canceling invite:', error);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-2">
@@ -122,13 +130,24 @@ const InvitesSection = ({ username, onInviteAccepted }) => {
           <div className="space-y-2">
             {sentInvites.map((invite) => (
               <div key={invite.id} className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-3">
-                <div className="flex items-center space-x-2 mb-2">
-                  <div className="w-6 h-6 bg-blue-600/20 border border-blue-500/30 rounded-full flex items-center justify-center">
-                    <span className="text-blue-400 font-bold text-xs">
-                      {invite.toUsername.charAt(0).toUpperCase()}
-                    </span>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-6 h-6 bg-blue-600/20 border border-blue-500/30 rounded-full flex items-center justify-center">
+                      <span className="text-blue-400 font-bold text-xs">
+                        {invite.toUsername.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <span className="text-white/90 font-medium text-sm">{invite.toUsername}</span>
                   </div>
-                  <span className="text-white/90 font-medium text-sm">{invite.toUsername}</span>
+                  <button
+                    onClick={() => handleCancelInvite(invite.id)}
+                    className="text-red-400 hover:text-red-300 p-1 hover:bg-red-900/20 rounded transition-all duration-200"
+                    title="Cancel invite"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
                 <p className="text-gray-400/70 text-xs">Waiting for response...</p>
               </div>

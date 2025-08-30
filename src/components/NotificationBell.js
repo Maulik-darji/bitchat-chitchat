@@ -33,9 +33,9 @@ const NotificationBell = ({ username }) => {
         className="relative p-2 text-gray-400 hover:text-white transition-colors duration-200 rounded-lg hover:bg-gray-700/50"
         title="Notifications"
       >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5zM4 19h6a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" />
-        </svg>
+        <span className="material-symbols-outlined text-2xl">
+          {unreadCount > 0 ? 'notifications_unread' : 'notifications'}
+        </span>
         
         {/* Unread count badge */}
         {unreadCount > 0 && (

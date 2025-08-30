@@ -19,15 +19,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
   const [copiedMessageId, setCopiedMessageId] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
-  const isDesktop = typeof window !== 'undefined' && !(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
-  const focusInput = () => {
-    if (typeof window !== 'undefined' && window.__modalOpen) return;
-    const el = inputRef.current;
-    if (!el) return;
-    if (document.activeElement !== el) {
-      try { el.focus({ preventScroll: true }); } catch (_) { el.focus(); }
-    }
-  };
+
   
 
 
@@ -88,19 +80,17 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
     return () => clearInterval(interval);
   }, [username, spamError]);
 
-  // Desktop: keep the input focused so users can type next message immediately
+  // Focus input initially but allow it to lose focus
   useEffect(() => {
-    if (isDesktop) {
-      focusInput();
-    }
-  }, [isDesktop]);
+    // Only focus initially, don't keep re-focusing
+    setTimeout(() => {
+      if (inputRef.current && document.activeElement !== inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 100);
+  }, []);
 
-  // Also re-focus after message list changes (common blur cause in SPA hot UI updates)
-  useEffect(() => {
-    if (isDesktop) {
-      focusInput();
-    }
-  }, [messages.length]);
+  // Remove the auto-re-focus effect that was causing the persistent focus
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -164,11 +154,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
       setMessages(prev => prev.filter(msg => !msg.isOptimistic));
     } finally {
       setIsSending(false);
-      if (isDesktop) {
-        focusInput();
-        setTimeout(focusInput, 0);
-        setTimeout(focusInput, 100);
-      }
+      // Don't auto-re-focus after sending message
     }
   };
 
@@ -269,11 +255,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
         setMessages(prev => prev.filter(msg => !msg.isOptimistic));
       } finally {
         setIsSending(false);
-        if (isDesktop) {
-          focusInput();
-          setTimeout(focusInput, 0);
-          setTimeout(focusInput, 100);
-        }
+        // Don't auto-re-focus after sending message
       }
     } else {
       // User chose to send original message (admin override)
@@ -326,11 +308,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
         setMessages(prev => prev.filter(msg => !msg.isOptimistic));
       } finally {
         setIsSending(false);
-        if (isDesktop) {
-          focusInput();
-          setTimeout(focusInput, 0);
-          setTimeout(focusInput, 100);
-        }
+        // Don't auto-re-focus after sending message
       }
     }
   };
@@ -384,7 +362,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
       />
 
       {/* Messages Container with WhatsApp-style layout - Scrollable */}
-      <div className="flex-1 overflow-y-auto p-2 lg:p-3 space-y-3 flex flex-col min-h-0 pb-4" style={{ paddingBottom: '120px' }}>
+      <div className="flex-1 overflow-y-auto p-2 lg:p-3 space-y-3 flex flex-col min-h-0 pb-4 relative z-20" style={{ backgroundColor: '#212121' }}>
         {messages.length === 0 ? (
           <div className="text-center text-gray-400/70 py-12">
             <div className="w-16 h-16 bg-gray-800/50 border border-gray-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -462,7 +440,7 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
                       <div className={`
                         ${isCurrentUser(message.username) 
                           ? 'bg-gray-600/20 border-gray-500/30 text-white/90' 
-                          : 'bg-gray-800/40 border-gray-700/30 text-white/90'
+                          : 'bg-message-bg/40 border-gray-700/30 text-white/90'
                         } 
                         backdrop-blur-sm rounded-2xl px-2.5 py-1.5 border break-words inline-block
                       `}>
@@ -574,14 +552,11 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
         )}
       </div>
 
-      {/* Twitter-style Message Input - Fixed position */}
+      {/* Twitter-style Message Input - Sticky position */}
       <div 
-        className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0 fixed bottom-0 left-0 right-0 z-10"
-        style={{ 
-          left: window.innerWidth >= 1024 ? `${sidebarWidth}px` : '0px',
-          right: window.innerWidth >= 1280 ? '320px' : '0px'
-        }}
-        onClick={() => { if (isDesktop) inputRef.current?.focus(); }}
+        className="backdrop-blur-sm border-t p-4 lg:p-6 flex-shrink-0 sticky bottom-0 z-50"
+        style={{ backgroundColor: '#303030' }}
+        onClick={() => { inputRef.current?.focus(); }}
       >
         {/* Spam Error Display - Only show when there's an actual error */}
         {spamError && (
@@ -612,26 +587,22 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
             </div>
           )}
           
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Type your message..."
-            disabled={isSending || !spamStatus.canSend}
-            className="flex-1 bg-gray-800 text-white px-4 py-3 rounded-2xl border border-gray-700 focus:border-gray-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-            ref={inputRef}
-            autoFocus={isDesktop}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSendMessage(e);
-              }
-            }}
-            onBlur={() => {
-              // Only re-focus on desktop if we're not editing a message
-              if (isDesktop && !editingMessage) setTimeout(focusInput, 0);
-            }}
-          />
+                     <input
+             type="text"
+             value={newMessage}
+             onChange={(e) => setNewMessage(e.target.value)}
+             placeholder="Type your message..."
+             disabled={isSending || !spamStatus.canSend}
+             className="flex-1 text-white px-4 py-3 rounded-2xl border border-[#181818] focus:border-gray-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+             style={{ backgroundColor: '#303030' }}
+             ref={inputRef}
+             onKeyDown={(e) => {
+               if (e.key === 'Enter' && !e.shiftKey) {
+                 e.preventDefault();
+                 handleSendMessage(e);
+               }
+             }}
+           />
           <button
             type="submit"
             disabled={!newMessage.trim() || isSending || !spamStatus.canSend}
@@ -641,7 +612,18 @@ const PublicChat = ({ username, sidebarWidth = 256 }) => {
               e.preventDefault();
             }}
           >
-            {isSending ? 'Sending...' : 'Send'}
+            {isSending ? (
+              <div className="flex items-center space-x-2">
+                <svg className="w-5 h-5 text-gray-400/70 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Sending...</span>
+              </div>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            )}
           </button>
         </form>
       </div>

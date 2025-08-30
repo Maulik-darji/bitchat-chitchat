@@ -19,6 +19,7 @@ function App() {
   const [currentPrivateChat, setCurrentPrivateChat] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem('sidebarWidth');
     return saved ? parseInt(saved) : 256;
@@ -366,10 +367,10 @@ function App() {
       <div className="flex h-full">
         {/* Left Sidebar - Hidden on small screens */}
         <div 
-          className={`hidden lg:block h-screen overflow-hidden bg-gray-900/95 backdrop-blur-md border-r border-gray-800/50 ${
+          className={`hidden lg:block h-screen overflow-hidden backdrop-blur-md border-r border-gray-800/50 ${
             isResizing ? '' : 'transition-all duration-200'
           }`}
-          style={{ width: `${sidebarWidth}px` }}
+          style={{ width: `${sidebarWidth}px`, backgroundColor: '#181818' }}
         >
           <Sidebar
             currentView={currentView}
@@ -399,7 +400,9 @@ function App() {
           onDoubleClick={handleDoubleClick}
           title="Drag to resize sidebar • Double-click to reset"
         >
-          <div className="absolute inset-0 flex items-center justify-center">
+                     <div className={`absolute inset-0 flex items-center justify-center ${
+             isResizing ? 'bg-[#303030]' : 'bg-[#1d1d1d]'
+           }`}>
             <div className={`w-0.5 h-8 transition-colors duration-200 ${
               isResizing 
                 ? 'bg-blue-400/90' 
@@ -424,10 +427,11 @@ function App() {
             <div className="h-full flex flex-col">
               {/* Fixed header that stays visible even when mobile keyboard appears */}
               <div
-                className="fixed top-0 bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4 z-50"
+                className="fixed top-0 backdrop-blur-sm border-b border-gray-700/50 p-4 z-50"
                 style={{
                   left: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${sidebarWidth}px` : '0px',
-                  right: typeof window !== 'undefined' && window.innerWidth >= 1280 ? '320px' : '0px'
+                  right: typeof window !== 'undefined' && window.innerWidth >= 1280 ? '320px' : '0px',
+                  backgroundColor: '#212121'
                 }}
               >
                 <div className="flex items-center justify-between">
@@ -448,22 +452,32 @@ function App() {
                     <NotificationBell username={username} />
                     <button
                       onClick={() => {
+                        setIsRefreshing(true);
                         // Trigger refresh in PublicChat component
                         const event = new CustomEvent('refreshPublicChat');
                         window.dispatchEvent(event);
+                        // Reset loading state after a short delay
+                        setTimeout(() => setIsRefreshing(false), 1000);
                       }}
+                      disabled={isRefreshing}
                       className="p-2 bg-gray-700/50 hover:bg-gray-600/50 disabled:bg-gray-600/20 rounded-lg border border-gray-600/50 hover:border-gray-500/50 disabled:border-gray-500/30 transition-all duration-200"
                       title="Refresh messages"
                     >
-                      <svg className="w-5 h-5 text-gray-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
+                      {isRefreshing ? (
+                        <svg className="w-5 h-5 text-gray-400/70 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5 text-gray-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      )}
                     </button>
                   </div>
                 </div>
               </div>
               {/* Scrollable messages area with top padding to account for fixed header */}
-              <div className="flex-1 overflow-y-auto min-h-0 pt-20">
+              <div className="flex-1 overflow-y-auto min-h-0 pt-20" style={{ backgroundColor: '#212121' }}>
                 <PublicChat username={username} sidebarWidth={sidebarWidth} />
               </div>
             </div>
@@ -473,10 +487,11 @@ function App() {
             <div className="h-full flex flex-col">
               {/* Fixed header to avoid keyboard scroll push on mobile */}
               <div
-                className="fixed top-0 z-50 bg-gray-800/80 backdrop-blur-sm border-b border-gray-700/50 p-4"
+                className="fixed top-0 z-50 backdrop-blur-sm border-b border-gray-700/50 p-4"
                 style={{
                   left: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${sidebarWidth}px` : '0px',
-                  right: typeof window !== 'undefined' && window.innerWidth >= 1280 ? '320px' : '0px'
+                  right: typeof window !== 'undefined' && window.innerWidth >= 1280 ? '320px' : '0px',
+                  backgroundColor: '#212121'
                 }}
               >
                 <div className="flex items-center justify-between">
@@ -507,7 +522,7 @@ function App() {
                 </div>
               </div>
               {/* Scroll area offset by header height */}
-              <div className="flex-1 overflow-y-auto pt-16">
+              <div className="flex-1 overflow-y-auto pt-16" style={{ backgroundColor: '#212121' }}>
                 <PrivateRoom
                   roomId={currentRoom.id}
                   roomName={currentRoom.name}
@@ -567,17 +582,17 @@ function App() {
         </div>
 
         {/* Right Sidebar - Hidden on screens < 900px */}
-        <div className="hidden xl:block w-80 h-screen overflow-hidden">
+        <div className="hidden xl:block w-80 h-screen overflow-hidden" style={{ backgroundColor: '#181818' }}>
           <StatsSidebar />
         </div>
       </div>
 
       {/* Mobile Sidebar Overlay */}
       {currentView === 'mobile-menu' && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-gray-900/95 backdrop-blur-md">
+        <div className="lg:hidden fixed inset-0 z-50 backdrop-blur-md" style={{ backgroundColor: '#181818' }}>
           <div className="flex h-full">
             {/* Sidebar Content */}
-            <div className="w-64 h-full overflow-y-auto">
+            <div className="w-64 h-full overflow-y-auto" style={{ backgroundColor: '#181818' }}>
               <Sidebar
                 currentView={currentView}
                 onViewChange={setCurrentView}

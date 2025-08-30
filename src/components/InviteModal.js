@@ -65,7 +65,7 @@ const InviteModal = ({ username, onClose, onInviteSent }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800/95 backdrop-blur-md border border-gray-700/50 rounded-2xl p-6 w-full max-w-md">
+      <div className="bg-[#414071] backdrop-blur-md border border-gray-700/50 rounded-2xl p-6 w-full max-w-md">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-white/90">Invite User for Private Chat</h2>
           <button

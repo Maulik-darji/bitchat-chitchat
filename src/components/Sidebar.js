@@ -147,7 +147,9 @@ const Sidebar = ({ currentView, onViewChange, username, onLogout, isLoggingOut, 
             className={`w-full flex items-center rounded-full transition-all duration-200 text-left ${
               currentView === item.id
                 ? 'bg-gray-600/20 text-gray-300 border border-gray-500/30'
-                : 'text-gray-300 hover:bg-gray-800/50 hover:text-white/90'
+                : item.id === 'invite-user'
+                  ? 'text-gray-300 hover:bg-[#414071] hover:text-white/90'
+                  : 'text-gray-300 hover:bg-gray-800/50 hover:text-white/90'
             } ${
               sidebarWidth < 280 ? 'space-x-1.5 px-2 py-1.5' : sidebarWidth < 320 ? 'space-x-2 px-2.5 py-2' : 'space-x-2 lg:space-x-3 px-3 lg:px-4 py-2 lg:py-3'
             }`}

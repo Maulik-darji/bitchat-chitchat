@@ -61,7 +61,8 @@ if (missingFirebaseKeys.length) {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true
+  experimentalAutoDetectLongPolling: true,
+  databaseId: 'main'
 });
 const functions = getFunctions(app);
 
@@ -1226,6 +1227,38 @@ class FirebaseService {
       return true;
     } catch (error) {
       console.error('Error responding to invite:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Cancel private chat invite
+   */
+  async cancelPrivateChatInvite(inviteId) {
+    try {
+      const current = auth.currentUser;
+      if (!current) throw new Error('No authenticated user');
+
+      const inviteRef = doc(db, COLLECTIONS.INVITES, inviteId);
+      const inviteDoc = await getDoc(inviteRef);
+      
+      if (!inviteDoc.exists()) {
+        throw new Error('Invite not found');
+      }
+
+      const inviteData = inviteDoc.data();
+      
+      // Only the sender can cancel the invite
+      if (inviteData.fromUid !== current.uid) {
+        throw new Error('Only the invite sender can cancel the invite');
+      }
+
+      // Delete the invite
+      await deleteDoc(inviteRef);
+
+      return true;
+    } catch (error) {
+      console.error('Error canceling invite:', error);
       throw error;
     }
   }

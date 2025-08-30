@@ -9,6 +9,7 @@ module.exports = {
         'dark-bg': '#000000',
         'sidebar-bg': '#181818',
         'chat-bg': '#212121',
+        'message-bg': '#303030',
       }
     },
   },

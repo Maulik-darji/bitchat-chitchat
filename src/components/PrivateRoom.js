@@ -472,7 +472,7 @@ const PrivateRoom = (props) => {
                       <div className={`
                         ${isCurrentUser(message.username) 
                           ? 'bg-green-600/20 border-green-500/30 text-white/90' 
-                          : 'bg-gray-800/40 border-gray-700/30 text-white/90'
+                          : 'bg-message-bg/40 border-gray-700/30 text-white/90'
                         } 
                         backdrop-blur-sm rounded-2xl px-3 py-2 border break-words inline-block max-w-full
                       `}>
@@ -535,7 +535,7 @@ const PrivateRoom = (props) => {
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Type your message..."
-              className="flex-1 px-3 py-2 lg:px-4 lg:py-3 rounded-xl text-sm lg:text-base transition-all duration-150 bg-gray-700/50 border border-gray-600/50 text-white/90 placeholder-gray-400/70 focus:ring-2 focus:ring-green-500/50 focus:border-green-500/50 focus:outline-none"
+              className="flex-1 px-3 py-2 lg:px-4 lg:py-3 rounded-xl text-sm lg:text-base transition-all duration-150 bg-[#303030] border border-gray-600/50 text-white/90 placeholder-gray-400/70 focus:ring-2 focus:ring-green-500/50 focus:border-green-500/50 focus:outline-none"
               disabled={isSending}
               ref={inputRef}
               autoFocus={isDesktop}

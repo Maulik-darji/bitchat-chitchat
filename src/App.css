@@ -10,6 +10,13 @@ html, body, #root {
   padding: 0;
 }
 
+/* Custom color variables */
+:root {
+  --chat-area-color: #212121;
+  --sidebar-color: #181818;
+  --sidebar-hover-color: #303030;
+}
+
 /* Custom scrollbar for webkit browsers */
 ::-webkit-scrollbar {
   width: 6px;

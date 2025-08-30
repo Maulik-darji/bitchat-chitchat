@@ -305,7 +305,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
         >
           {/* Optional internal header (hidden when parent renders a fixed header) */}
           {!hideHeader && (
-            <div className="sticky top-0 z-30 bg-gray-800/60 backdrop-blur-sm border-b border-gray-700/50 p-4 flex-shrink-0">
+                         <div className="sticky top-0 z-30 bg-gray-800/60 backdrop-blur-sm border-b border-gray-700/50 p-4 flex-shrink-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 lg:w-10 lg:h-10 bg-purple-600/20 border border-purple-500/30 rounded-full flex items-center justify-center">
@@ -372,7 +372,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                 <div key={message.id} className={`flex ${isCurrentUser(message.username) ? 'justify-end' : 'justify-start'}`}>
                   {editingMessage === message.id ? (
                     <div className="max-w-xs lg:max-w-md relative z-[9998]">
-                      <div className="bg-gray-800/40 backdrop-blur-sm rounded-lg p-4 border border-gray-700/30">
+                                             <div className="bg-[#303030] backdrop-blur-sm rounded-lg p-4 border border-gray-600/50">
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-2">
@@ -385,13 +385,13 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                             </div>
                             <span className="text-yellow-400/80 text-xs font-medium">Editing...</span>
                           </div>
-                          <textarea
-                            value={editText}
-                            onChange={(e) => setEditText(e.target.value)}
-                            className="w-full bg-gray-700/50 border border-gray-600/50 rounded-lg p-3 text-white/90 resize-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
-                            rows="3"
-                            autoFocus
-                          />
+                                                     <textarea
+                             value={editText}
+                             onChange={(e) => setEditText(e.target.value)}
+                             className="w-full bg-[#303030] border border-gray-600/50 rounded-lg p-3 text-white/90 resize-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
+                             rows="3"
+                             autoFocus
+                           />
                           <div className="flex space-x-2">
                             <button
                               onClick={() => handleEditMessage(message.id, editText)}
@@ -419,21 +419,21 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                       <div className={`
                         ${isCurrentUser(message.username) 
                           ? 'bg-purple-600/20 border-purple-500/30 text-white/90' 
-                          : 'bg-gray-800/40 border-gray-700/30 text-white/90'
+                          : 'bg-message-bg/40 border-gray-700/30 text-white/90'
                         } 
                         backdrop-blur-sm rounded-2xl px-2.5 py-1.5 border break-words inline-block
                       `}>
-                        {/* Reply indicator */}
-                        {replyingTo && replyingTo.id === message.id && (
-                          <div className="mb-2 p-2 bg-gray-700/30 rounded-lg border-l-4 border-purple-500">
+                                                 {/* Reply indicator */}
+                         {replyingTo && replyingTo.id === message.id && (
+                           <div className="mb-2 p-2 bg-[#303030] rounded-lg border-l-4 border-purple-500">
                             <p className="text-xs text-gray-400">Replying to:</p>
                             <p className="text-sm text-gray-300">{message.message}</p>
                           </div>
                         )}
                         
-                        {/* Reply to message indicator */}
-                        {message.replyTo && (
-                          <div className="mb-2 p-2 bg-gray-700/30 rounded-lg border-l-4 border-purple-500">
+                                                 {/* Reply to message indicator */}
+                         {message.replyTo && (
+                           <div className="mb-2 p-2 bg-[#303030] rounded-lg border-l-4 border-purple-500">
                             <p className="text-xs text-gray-400">Replying to {message.replyTo.username}:</p>
                             <p className="text-sm text-gray-300">{message.replyTo.message}</p>
                           </div>
@@ -450,9 +450,9 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                              timestamp={message.timestamp}
                              isCurrentUser={isCurrentUser(message.username)}
                            />
-                           {message.edited && (
-                             <span className="text-xs bg-gray-700/30 px-1 py-0.5 rounded text-xs">edited</span>
-                           )}
+                                                       {message.edited && (
+                              <span className="text-xs bg-[#303030] px-1 py-0.5 rounded text-xs">edited</span>
+                            )}
                          </div>
                       </div>
                       
@@ -464,24 +464,24 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                              right: isCurrentUser(message.username) ? '-8px' : 'auto',
                              zIndex: 99999
                            }}>
-                        <div className="bg-gray-800/95 backdrop-blur-sm border border-gray-600/50 rounded-lg shadow-2xl p-2" style={{ minWidth: '120px' }}>
+                                                 <div className="bg-[#303030] backdrop-blur-sm border border-gray-600/50 rounded-lg shadow-2xl p-2" style={{ minWidth: '120px' }}>
                           <div className="flex flex-col space-y-1">
-                            {/* Reply Button */}
-                            <button
-                              onClick={() => handleReply(message)}
-                              className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-md transition-colors duration-150"
-                            >
+                                                         {/* Reply Button */}
+                             <button
+                               onClick={() => handleReply(message)}
+                               className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-[#303030] rounded-md transition-colors duration-150"
+                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
                               </svg>
                               <span>Reply</span>
                             </button>
 
-                            {/* Copy Text Button */}
-                            <button
-                              onClick={() => handleCopyText(message.message, message.id)}
-                              className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-md transition-colors duration-150"
-                            >
+                                                         {/* Copy Text Button */}
+                             <button
+                               onClick={() => handleCopyText(message.message, message.id)}
+                               className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-[#303030] rounded-md transition-colors duration-150"
+                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 002 2v8a2 2 0 002 2z" />
                               </svg>
@@ -495,7 +495,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                                   setEditingMessage(message.id);
                                   setEditText(message.message);
                                 }}
-                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-md transition-colors duration-150"
+                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-[#303030] rounded-md transition-colors duration-150"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -531,10 +531,10 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
         </div>
 
         {/* Message Input */}
-        <div className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0" onClick={() => { if (isDesktop) inputRef.current?.focus(); }}>
-          {/* Reply indicator */}
-          {replyingTo && (
-            <div className="mb-3 p-3 bg-gray-700/30 rounded-lg border-l-4 border-purple-500">
+                            <div className="bg-gray-800/60 backdrop-blur-sm border-t border-gray-700/50 p-4 lg:p-6 flex-shrink-0" onClick={() => { if (isDesktop) inputRef.current?.focus(); }}>
+                     {/* Reply indicator */}
+           {replyingTo && (
+             <div className="mb-3 p-3 bg-[#303030] rounded-lg border-l-4 border-purple-500">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-400">Replying to {replyingTo.username}:</p>
@@ -558,7 +558,7 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Type your message..."
-              className="flex-1 px-4 py-3 bg-gray-700/50 border border-gray-600/50 rounded-lg text-white/90 placeholder-gray-400/70 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
+              className="flex-1 px-4 py-3 bg-[#303030] border border-[#181818] rounded-lg text-white/90 placeholder-gray-400/70 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
               disabled={isSending}
               ref={inputRef}
               autoFocus={isDesktop}
@@ -567,25 +567,29 @@ const PrivateChat = ({ chatId, otherUsername, username, onClose, onUserRemoved, 
                 if (isDesktop && !editingMessage) setTimeout(focusInput, 0); 
               }}
             />
-            <button
-              type="submit"
-              disabled={!newMessage.trim() || isSending}
-              className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
-                newMessage.trim() && !isSending
-                  ? 'bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 hover:text-purple-300 border border-purple-500/30 hover:border-purple-500/50'
-                  : 'bg-gray-600/20 text-gray-500 border border-gray-500/30 cursor-not-allowed'
-              }`}
-              onMouseDown={(e) => { e.preventDefault(); }}
-            >
-              {isSending ? (
-                <div className="flex items-center space-x-2">
-                  <svg className="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  <span>Sending...</span>
-                </div>
-              ) : 'Send'}
-            </button>
+                         <button
+               type="submit"
+               disabled={!newMessage.trim() || isSending}
+               className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                 newMessage.trim() && !isSending
+                   ? 'bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 hover:text-purple-300 border border-purple-500/30 hover:border-purple-500/50'
+                   : 'bg-gray-600/20 text-gray-500 border border-gray-500/30 cursor-not-allowed'
+               }`}
+               onMouseDown={(e) => { e.preventDefault(); }}
+             >
+               {isSending ? (
+                 <div className="flex items-center space-x-2">
+                   <svg className="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                   </svg>
+                   <span>Sending...</span>
+                 </div>
+               ) : (
+                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                 </svg>
+               )}
+             </button>
           </form>
         </div>
       </div>

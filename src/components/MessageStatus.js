@@ -62,12 +62,6 @@ const MessageStatus = ({ status, timestamp, isCurrentUser }) => {
   return (
     <div className="flex items-center space-x-1">
       {getStatusIcon()}
-      <span className="text-xs text-gray-400">
-        {timestamp && new Date(timestamp).toLocaleTimeString([], { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        })}
-      </span>
       <span className="text-xs text-gray-500 ml-1">
         {getStatusText()}
       </span>
